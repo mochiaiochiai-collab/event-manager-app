@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-/* ===== ここを Firebase コンソールの自分の値に置き換え！ ===== */
+// ==== Firebase（あなたの値でOK）====
 const firebaseConfig = {
   apiKey: "AIzaSyDEpxJ68m7uERr9EnJ3-13ahMhU0DLUWmw",
   authDomain: "eagles-event-appli.firebaseapp.com",
   projectId: "eagles-event-appli",
   storageBucket: "eagles-event-appli.firebasestorage.app",
   messagingSenderId: "908768795767",
-  appId: "1:908768795767:web:f54b5e168d0d98d4efba72"
+  appId: "1:908768795767:web:f54b5e168d0d98d4efba72",
 };
-/* ========================================================== */
 
-/** Firebase（CDN）を動的 import。npm 追加なしでOK */
+// Firestore を CDN から読み込み（npm依存なし / JSオンリー）
 async function loadFirebase() {
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
   const {
@@ -19,312 +18,427 @@ async function loadFirebase() {
     collection,
     doc,
     addDoc,
-    setDoc,
     updateDoc,
     deleteDoc,
     getDocs,
     onSnapshot,
-    query,
-    orderBy,
+    setDoc,
   } = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
-
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
-  return { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy };
+  return { db, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, setDoc };
 }
 
-const STATUSES = ["出席", "欠席", "未定"];
+// ===== 定数（JSのみ）=====
+const STATUSES = ["出席", "欠席", "遅刻", "早退"]; // プルダウンの選択肢
 
-const initialDetail = {
-  title: "",
-  month: "",
-  day: "",
-  place: "",
-  info: "",
-  meetTime: "",
-  items: "",
-  coachesParentsNotes: "",
-};
-
+// 見た目の共通クラス（Tailwindが無くても動作しますが、あれば色が出ます）
+const inputBase = "border border-gray-300 bg-white rounded-lg px-3 py-2 w-full";
+const btnBlue = "px-4 py-2 rounded-xl bg-blue-600 text-white active:scale-[0.99] disabled:opacity-50";
+const card = "bg-white rounded-2xl shadow p-4";
 
 export default function App() {
+  const [firebaseReady, setFirebaseReady] = useState(false);
   const [fb, setFb] = useState(null);
-  const [ready, setReady] = useState(false);
-  const [activeEventId, setActiveEventId] = useState(null);
+
   const [events, setEvents] = useState([]);
-  const [roster, setRoster] = useState([]);
-  const [newEvent, setNewEvent] = useState({ title: "", month: "", day: "" });
+  const [activeId, setActiveId] = useState(null);
+  const [roster, setRoster] = useState([]); // {id, name, role, gender}
 
-  const activeEvent = useMemo(() => events.find((e) => e.id === activeEventId) || null, [events, activeEventId]);
+  // 画面モード（トップ=登録/一覧、詳細）
+  const [mode, setMode] = useState("list");
+
+  // イベント登録（モバイル優先：月/日/曜/タイトル）
+  const [newEvent, setNewEvent] = useState({ title: "", month: "", day: "", weekday: "" });
+
+  // 新規選手
+  const [newMember, setNewMember] = useState({ name: "", gender: "男子" });
+
+  // アクティブイベント
+  const activeEvent = useMemo(() => events.find((e) => e.id === activeId) || null, [events, activeId]);
+
+  // 詳細（場所・補足・集合時間・持ち物＋メモ3種）
+  const initialDetail = {
+    title: "",
+    month: "",
+    day: "",
+    weekday: "",
+    place: "",
+    info: "",
+    meetTime: "",
+    items: "",
+    coachNotes: "",
+    carpool: "",
+    escort: "",
+  };
   const [detail, setDetail] = useState(initialDetail);
-
 
   useEffect(() => {
     (async () => {
       const lib = await loadFirebase();
       setFb(lib);
-      setReady(true);
+      setFirebaseReady(true);
 
-      // 一覧は dateKey（MM-DD）で並べる → 複合インデックス不要
-      const evQ = lib.query(lib.collection(lib.db, "events"), lib.orderBy("dateKey"));
-      lib.onSnapshot(evQ, (snap) => setEvents(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      // events
+      const evCol = lib.collection(lib.db, "events");
+      lib.onSnapshot(evCol, (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort(
+          (a, b) =>
+            Number(a.month || 0) - Number(b.month || 0) ||
+            Number(a.day || 0) - Number(b.day || 0)
+        );
+        setEvents(list);
+      });
 
-      const roQ = lib.query(lib.collection(lib.db, "roster"), lib.orderBy("name"));
-      lib.onSnapshot(roQ, (snap) => setRoster(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      // roster
+      const roCol = lib.collection(lib.db, "roster");
+      lib.onSnapshot(roCol, (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        setRoster(list);
+      });
     })();
   }, []);
 
-useEffect(() => {
-  if (!activeEvent) {
-    setDetail(initialDetail);
-    return;
-  }
-  setDetail({
-    title: activeEvent.title || "",
-    month: activeEvent.month || "",
-    day: activeEvent.day || "",
-    place: activeEvent.place || "",
-    info: activeEvent.info || "",
-    meetTime: activeEvent.meetTime || "",
-    items: activeEvent.items || "",
-    coachesParentsNotes: activeEvent.coachesParentsNotes || "",
-  });
-}, [activeEvent]);
+  // イベント選択時に詳細へ
+  useEffect(() => {
+    if (!activeEvent) { setDetail(initialDetail); return; }
+    setDetail({
+      title: activeEvent.title || "",
+      month: activeEvent.month || "",
+      day: activeEvent.day || "",
+      weekday: activeEvent.weekday || "",
+      place: activeEvent.place || "",
+      info: activeEvent.info || "",
+      meetTime: activeEvent.meetTime || "",
+      items: activeEvent.items || "",
+      coachNotes: activeEvent.coachNotes || "",
+      carpool: activeEvent.carpool || "",
+      escort: activeEvent.escort || "",
+    });
+  }, [activeEvent]);
 
-
-  if (!ready) return <Center>初期化中…（<code>firebaseConfig</code> を設定してね）</Center>;
-
-  if (!activeEventId) {
+  if (!firebaseReady) {
     return (
-      <Page>
-        <Section>
-          <H1>🏀 Eaglesオリジナルスケジュールapp</H1>
-          <Card style={{ marginTop: 16 }}>
-            <H2>＋ イベントを登録（「月・日・イベント名」）</H2>
-            <Row>
-              <input style={input} placeholder="月(10)" value={newEvent.month}
-                     onChange={(e) => setNewEvent({ ...newEvent, month: e.target.value })}/>
-              <input style={input} placeholder="日(15)" value={newEvent.day}
-                     onChange={(e) => setNewEvent({ ...newEvent, day: e.target.value })}/>
-              <input style={{ ...input, flex: 1 }} placeholder="イベント名（例：地区大会）" value={newEvent.title}
-                     onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}/>
-              <button style={btnPrimary} onClick={async () => {
-                const { month, day, title } = newEvent;
-                if (!month || !day || !title) return alert("月・日・イベント名は必須です");
-                await fb.addDoc(fb.collection(fb.db, "events"), {
-                  ...newEvent,
-                  dateKey: `${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`,
-                  place: "", info: "", meetTime: "", items: "", coachesParentsNotes: "",
-                  createdAt: Date.now(),
-                });
-                setNewEvent({ title: "", month: "", day: "" });
-              }}>登録</button>
-            </Row>
-          </Card>
-
-          <Card style={{ marginTop: 16 }}>
-            <H2>📅 イベント一覧</H2>
-            {events.length === 0 && <p style={{ color: "#777" }}>まだ登録がありません。</p>}
-            <ul style={{ listStyle: "none", padding: 0, marginTop: 8 }}>
-              {events.map((ev) => (
-                <li key={ev.id} style={listItem}>
-                 <div>
-  <b>{pad2(ev.month)}/{pad2(ev.day)}</b> {ev.title}
-  {ev.place ? <span style={{ color: "#777" }}>（{ev.place}）</span> : null}
-</div>
-<button
-  style={{ ...btnPrimary, padding: "6px 10px" }}
-  onClick={() => setActiveEventId(ev.id)}
->
-  詳細を開く
-</button>
-                  <button style={btnGhost} onClick={async () => {
-                    if (!confirm("このイベントを削除しますか？")) return;
-                    const resCol = fb.collection(fb.db, `events/${ev.id}/responses`);
-                    const snap = await fb.getDocs(resCol);
-                    await Promise.all(snap.docs.map((d) => fb.deleteDoc(d.ref)));
-                    await fb.deleteDoc(fb.doc(fb.db, "events", ev.id));
-                  }}>削除</button>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          <Card style={{ marginTop: 16 }}>
-            <H2>👥 メンバー台帳（選手/コーチ/保護者）</H2>
-            <p style={{ color: "#666" }}>ここに登録された <b>選手</b> が出欠表に並びます。</p>
-            <RosterManager fb={fb} roster={roster}/>
-          </Card>
-        </Section>
-      </Page>
+      <div className="min-h-screen flex items-center justify-center text-gray-700">
+        Firebase を初期化しています…
+      </div>
     );
   }
 
+  // ===== CRUD =====
+  const addEvent = async () => {
+    const { title, month, day } = newEvent;
+    if (!title || !month || !day) return alert("イベント名・月・日を入力してください");
+    await fb.addDoc(fb.collection(fb.db, "events"), { ...newEvent, createdAt: Date.now() });
+    setNewEvent({ title: "", month: "", day: "", weekday: "" });
+  };
+
+  const saveDetails = async () => {
+    if (!activeEvent) return;
+    await fb.updateDoc(fb.doc(fb.db, "events", activeEvent.id), { ...detail, updatedAt: Date.now() });
+    alert("保存しました");
+  };
+
+  const removeEvent = async (id) => {
+    if (!confirm("このイベントを削除しますか？出欠情報も失われます。")) return;
+    const resCol = fb.collection(fb.db, `events/${id}/responses`);
+    const resSnap = await fb.getDocs(resCol);
+    await Promise.all(resSnap.docs.map((d) => fb.deleteDoc(d.ref)));
+    await fb.deleteDoc(fb.doc(fb.db, "events", id));
+    if (activeId === id) setActiveId(null);
+  };
+
+  const addMember = async () => {
+    if (!newMember.name.trim()) return;
+    await fb.addDoc(fb.collection(fb.db, "roster"), {
+      name: newMember.name.trim(),
+      role: "選手",
+      gender: newMember.gender, // 「男子」「女子」
+      createdAt: Date.now(),
+    });
+    setNewMember({ name: "", gender: "男子" });
+  };
+
+  const removeMember = async (id) => {
+    if (!confirm("このメンバーを削除しますか？")) return;
+    await fb.deleteDoc(fb.doc(fb.db, "roster", id));
+  };
+
   return (
-    <Page>
-      <Section>
-        <button style={btnGhost} onClick={() => setActiveEventId(null)}>← 一覧へ戻る</button>
-        <H1>📝 イベント詳細</H1>
+    <div className="min-h-screen bg-white text-gray-900 p-4">
+      <div className="mx-auto max-w-md sm:max-w-2xl space-y-6">
+        {/* ヘッダー */}
+        <header className="sticky top-0 z-10 bg-sky-600 text-white rounded-2xl px-4 py-3 shadow">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏀</span>
+            <h1 className="font-semibold">Eaglesオリジナルスケジュールapp</h1>
+          </div>
+        </header>
 
-        <Card style={{ marginTop: 12 }}>
-          <H2>概要</H2>
-          <Row>
-            <input style={smallInput} placeholder="月" value={detail.month}
-                   onChange={(e)=>setDetail({ ...detail, month: e.target.value })}/>
-            <input style={smallInput} placeholder="日" value={detail.day}
-                   onChange={(e)=>setDetail({ ...detail, day: e.target.value })}/>
-            <input style={{ ...input, flex: 1 }} placeholder="イベント名" value={detail.title}
-                   onChange={(e)=>setDetail({ ...detail, title: e.target.value })}/>
-          </Row>
-          <Row>
-            <input style={{ ...input, flex: 1 }} placeholder="場所（例：○○体育館）" value={detail.place}
-                   onChange={(e)=>setDetail({ ...detail, place: e.target.value })}/>
-          </Row>
-          <Row>
-            <textarea style={{ ...textarea, height: 70 }} placeholder="イベント詳細（自由記入）" value={detail.info}
-                      onChange={(e)=>setDetail({ ...detail, info: e.target.value })}/>
-          </Row>
-          <Row>
-            <input style={{ ...input, flex: 1 }} placeholder="集合時間（例：8:30 体育館入口）" value={detail.meetTime}
-                   onChange={(e)=>setDetail({ ...detail, meetTime: e.target.value })}/>
-          </Row>
-          <Row>
-            <textarea style={{ ...textarea, height: 70 }} placeholder="持ち物（自由記入）" value={detail.items}
-                      onChange={(e)=>setDetail({ ...detail, items: e.target.value })}/>
-          </Row>
-          <Row right>
-            <button style={btnPrimary} onClick={async ()=>{
-              await fb.updateDoc(fb.doc(fb.db, "events", activeEventId), { ...detail, updatedAt: Date.now(),
-                dateKey: `${String(detail.month).padStart(2,"0")}-${String(detail.day).padStart(2,"0")}`,
-              });
-              alert("保存しました");
-            }}>保存</button>
-          </Row>
-        </Card>
+        {/* ====== Top（イベント登録 & イベント一覧） ====== */}
+        <section className={card} style={{ display: mode === "list" ? "block" : "none" }}>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">📅 イベント登録</h2>
 
-        <Card style={{ marginTop: 12 }}>
-          <H2>出欠（選手）</H2>
-          <AttendanceTable fb={fb} eventId={activeEventId} members={roster.filter(m=>m.role==="選手")}/>
-        </Card>
+          {/* 月/日/曜 → タイトル → 登録 */}
+          <div className="grid grid-cols-4 gap-2 items-center mb-2">
+            <select className={inputBase} style={{ width: 64 }} value={newEvent.month}
+              onChange={(e) => setNewEvent({ ...newEvent, month: onlyNum(e.target.value) })}>
+              <option value="">月</option>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <option key={i + 1} value={String(i + 1)}>{i + 1}</option>
+              ))}
+            </select>
+            <select className={inputBase} style={{ width: 64 }} value={newEvent.day}
+              onChange={(e) => setNewEvent({ ...newEvent, day: onlyNum(e.target.value) })}>
+              <option value="">日</option>
+              {Array.from({ length: 31 }).map((_, i) => (
+                <option key={i + 1} value={String(i + 1)}>{i + 1}</option>
+              ))}
+            </select>
+            <select className={inputBase} style={{ width: 64 }} value={newEvent.weekday}
+              onChange={(e) => setNewEvent({ ...newEvent, weekday: e.target.value })}>
+              <option value="">曜</option>
+              {"日月火水木金土".split("").map((w) => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
+            <div className="col-span-4 sm:col-span-1 hidden sm:block" />
+          </div>
 
-        <Card style={{ marginTop: 12 }}>
-          <H2>コーチ・保護者の出席（自由記入）</H2>
-          <textarea style={{ ...textarea, height: 120 }}
-                    placeholder="例：コーチ山田：出席／コーチ佐藤：欠席。保護者◯◯さん送迎可 など"
-                    value={detail.coachesParentsNotes}
-                    onChange={(e)=>setDetail({ ...detail, coachesParentsNotes: e.target.value })}/>
-          <Row right>
-            <button style={btnPrimary} onClick={async ()=>{
-              await fb.updateDoc(fb.doc(fb.db, "events", activeEventId), {
-                coachesParentsNotes: detail.coachesParentsNotes, updatedAt: Date.now(),
-              });
-              alert("保存しました");
-            }}>保存</button>
-          </Row>
-        </Card>
-      </Section>
-    </Page>
+          <div className="flex gap-2 mb-3">
+            <input className={`${inputBase} flex-1`} placeholder="イベント名"
+              value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} />
+            <button className={btnBlue} onClick={addEvent}>登録</button>
+          </div>
+
+          <h3 className="text-base font-semibold mb-2 flex items-center gap-2">≡ イベント一覧</h3>
+          <div className="space-y-2">
+            {events.map((ev) => (
+              <div key={ev.id} className="rounded-xl bg-blue-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => {
+                      setActiveId(ev.id);
+                      setMode("detail");
+                      setTimeout(() => document.getElementById("detailTop")?.scrollIntoView({ behavior: "smooth" }), 0);
+                    }}
+                    className="text-left flex-1"
+                  >
+                    <div className="font-medium text-sm">{fmtDate(ev.month, ev.day, ev.weekday)}　{ev.title}</div>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button title="詳細" className="text-sm border rounded-lg px-2 py-1 bg-white"
+                      onClick={() => {
+                        setActiveId(ev.id);
+                        setMode("detail");
+                        setTimeout(() => document.getElementById("detailTop")?.scrollIntoView({ behavior: "smooth" }), 0);
+                      }}>↻</button>
+                    <button title="削除" className="text-sm border rounded-lg px-2 py-1 bg-white"
+                      onClick={() => removeEvent(ev.id)}>✖</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {events.length === 0 && <p className="text-sm text-gray-500">イベントがまだありません。上で登録してください。</p>}
+          </div>
+        </section>
+
+        {/* ====== 詳細（場所・補足・集合時間・持ち物） ====== */}
+        <section className="space-y-6">
+          <div className={card} id="detailTop" style={{ display: mode === "detail" ? "block" : "none" }}>
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">📋 イベント詳細</h2>
+            {!activeEvent ? (
+              <p className="text-sm text-gray-500">イベント一覧から選んでください。</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-blue-50 px-3 py-2 font-semibold">
+                  {fmtDate(detail.month, detail.day, detail.weekday)}　{detail.title}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  <input className={inputBase} placeholder="場所"
+                    value={detail.place} onChange={(e) => setDetail({ ...detail, place: e.target.value })} />
+                  <textarea className={inputBase} placeholder="補足" rows={3}
+                    value={detail.info} onChange={(e) => setDetail({ ...detail, info: e.target.value })} onInput={autoGrow} />
+                  <input className={inputBase} placeholder="集合時間"
+                    value={detail.meetTime} onChange={(e) => setDetail({ ...detail, meetTime: e.target.value })} />
+                  <textarea className={inputBase} placeholder="持ち物" rows={3}
+                    value={detail.items} onChange={(e) => setDetail({ ...detail, items: e.target.value })} onInput={autoGrow} />
+                </div>
+                <div className="flex justify-end"><button className={btnBlue} onClick={saveDetails}>保存</button></div>
+              </div>
+            )}
+          </div>
+
+          {/* ====== 出欠（男子・女子 + 合計） ====== */}
+          {mode === "detail" && activeEvent && (
+            <div className={card}>
+              <h2 className="text-lg font-semibold mb-3">🧒 選手出欠</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AttendanceTable title="男子" fb={fb} eventId={activeEvent.id}
+                  members={roster.filter((m) => (m.role === "選手" || m.role === "子ども") && m.gender === "男子")} />
+                <AttendanceTable title="女子" fb={fb} eventId={activeEvent.id}
+                  members={roster.filter((m) => (m.role === "選手" || m.role === "子ども") && m.gender === "女子")} />
+              </div>
+            </div>
+          )}
+
+          {/* ====== メモ（参加コーチ / 引率 / 配車） ====== */}
+          {mode === "detail" && activeEvent && (
+            <div className={card}>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold mb-1">🙋 参加コーチ</h3>
+                  <textarea className={inputBase} placeholder="コーチ名" rows={3}
+                    value={detail.coachNotes} onChange={(e) => setDetail({ ...detail, coachNotes: e.target.value })} onInput={autoGrow} />
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-1">🐇 引率</h3>
+                  <textarea className={inputBase} placeholder="保護者名" rows={3}
+                    value={detail.escort} onChange={(e) => setDetail({ ...detail, escort: e.target.value })} onInput={autoGrow} />
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-1">🚗 配車</h3>
+                  <textarea className={inputBase} placeholder="配車メモ" rows={3}
+                    value={detail.carpool} onChange={(e) => setDetail({ ...detail, carpool: e.target.value })} onInput={autoGrow} />
+                </div>
+                <div className="flex justify-end"><button className={btnBlue} onClick={saveDetails}>保存</button></div>
+              </div>
+            </div>
+          )}
+
+          {/* ====== Top（選手登録＆一覧） ====== */}
+          <div className={card} style={{ display: mode === "list" ? "block" : "none" }}>
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">🤖 選手登録</h2>
+            <div className="flex gap-2 mb-3">
+              <input className={`${inputBase} flex-1`} placeholder="なまえ"
+                value={newMember.name} onChange={(e) => setNewMember({ ...newMember, name: e.target.value })} />
+              <select className={inputBase} value={newMember.gender}
+                onChange={(e) => setNewMember({ ...newMember, gender: e.target.value })}>
+                <option value="男子">男・女</option>
+                <option value="男子">男子</option>
+                <option value="女子">女子</option>
+              </select>
+              <button className={btnBlue} onClick={addMember}>登録</button>
+            </div>
+
+            <h3 className="text-base font-semibold mb-2 flex items-center gap-2">≡ 選手一覧</h3>
+            <PlayersGroup
+              title="男子" colorClass="bg-green-100"
+              count={roster.filter((m) => (m.role === "選手" || m.role === "子ども") && m.gender === "男子").length}
+              list={roster.filter((m) => (m.role === "選手" || m.role === "子ども") && m.gender === "男子")}
+              onRemove={removeMember}
+            />
+            <PlayersGroup
+              title="女子" colorClass="bg-orange-100"
+              count={roster.filter((m) => (m.role === "選手" || m.role === "子ども") && m.gender === "女子").length}
+              list={roster.filter((m) => (m.role === "選手" || m.role === "子ども") && m.gender === "女子")}
+              onRemove={removeMember}
+            />
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 
-/* ---- 出欠テーブル（選手） ---- */
-function AttendanceTable({ fb, eventId, members }) {
+function PlayersGroup({ title, colorClass, count, list, onRemove }) {
+  return (
+    <div className="mb-4">
+      <div className={`flex items-center justify-between rounded-xl px-3 py-2 mb-2 ${colorClass}`}>
+        <span className="font-semibold">{title}</span>
+        <span className="text-sm text-gray-600">{count}人</span>
+      </div>
+      <ul className="space-y-2">
+        {list.map((m) => (
+          <li key={m.id} className="flex items-center justify-between px-3 py-2 border rounded-xl bg-white">
+            <span className="font-medium">{m.name}</span>
+            <button className="text-sm border rounded-lg px-3 py-1 bg-white" onClick={() => onRemove(m.id)}>削除</button>
+          </li>
+        ))}
+        {list.length === 0 && (
+          <li className="px-3 py-2 text-sm text-gray-500 border rounded-xl bg-white">該当なし</li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+function fmtDate(month, day, weekday) {
+  const mm = month ? String(month).padStart(2, "0") : "--";
+  const dd = day ? String(day).padStart(2, "0") : "--";
+  const w = weekday ? `(${weekday})` : "";
+  return `${mm}/${dd}${w}`;
+}
+function onlyNum(v) { return v.replace(/[^0-9]/g, ""); }
+function autoGrow(e) { const ta = e.currentTarget; ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; }
+function rowBg(status) {
+  if (status === "出席") return "bg-sky-100";
+  if (status === "欠席") return "bg-red-50";
+  if (status === "遅刻" || status === "早退") return "bg-yellow-50";
+  return "bg-white";
+}
+function AttendanceTable({ title, fb, eventId, members }) {
   const [responses, setResponses] = useState({});
   useEffect(() => {
     if (!fb || !eventId) return;
     const col = fb.collection(fb.db, `events/${eventId}/responses`);
     const unsub = fb.onSnapshot(col, (snap) => {
       const map = {};
-      snap.docs.forEach((d) => { const data = d.data(); map[data.name] = { status: data.status || "未定" }; });
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        map[data.name] = { status: data.status || "" };
+      });
       setResponses(map);
     });
     return () => unsub();
   }, [fb, eventId]);
 
   const setStatus = async (name, status) => {
-    const ref = fb.doc(fb.db, `events/${eventId}/responses`, name);
-    await fb.setDoc(ref, { name, status, updatedAt: Date.now() }, { merge: true });
+    const qdoc = fb.doc(fb.db, `events/${eventId}/responses`, name);
+    await fb.setDoc(qdoc, { name, status, updatedAt: Date.now() }, { merge: true });
   };
+  const totalAttend = members.reduce(
+    (acc, m) => (responses[m.name] && responses[m.name].status === "出席" ? acc + 1 : acc), 0);
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead><tr style={{ background: "#f5f5f5" }}>
-          <th style={th}>選手名</th><th style={th}>出欠</th></tr></thead>
-        <tbody>
-        {members.map((m)=>(
-          <tr key={m.id} style={{ borderTop: "1px solid #eee" }}>
-            <td style={td}>{m.name}</td>
-            <td style={td}>
-              <select value={responses[m.name]?.status || "未定"}
-                      onChange={(e)=>setStatus(m.name, e.target.value)} style={select}>
-                {STATUSES.map(s=> <option key={s} value={s}>{s}</option>)}
-              </select>
-            </td>
-          </tr>
-        ))}
-        {members.length===0 && <tr><td style={td} colSpan={2}>まず「メンバー台帳」で <b>選手</b> を登録してください。</td></tr>}
-        </tbody>
-      </table>
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-base font-semibold">{title}</h3>
+        <span className="text-sm text-gray-600">出席: <span className="font-bold">{totalAttend}</span> 人</span>
+      </div>
+      <div className="overflow-x-auto border rounded-xl">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="text-left px-3 py-2 w-1/2">名前</th>
+              <th className="text-left px-3 py-2">出欠</th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((m) => {
+              const s = (responses[m.name] && responses[m.name].status) || "";
+              return (
+                <tr key={m.id} className={`border-t ${rowBg(s)}`}>
+                  <td className="px-3 py-2 font-medium">{m.name}</td>
+                  <td className="px-3 py-2">
+                    <select className={`${inputBase} py-1`} value={s}
+                      onChange={(e) => setStatus(m.name, e.target.value)}>
+                      <option value="">選択</option>
+                      {STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
+            {members.length === 0 && (
+              <tr><td className="px-3 py-4 text-gray-500" colSpan={2}>メンバーがいません</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
-
-/* ---- メンバー台帳 ---- */
-function RosterManager({ fb, roster }) {
-  const [form, setForm] = useState({ name: "", role: "選手" });
-
-  const add = async () => {
-    if (!form.name.trim()) return;
-    await fb.addDoc(fb.collection(fb.db, "roster"), { name: form.name.trim(), role: form.role, createdAt: Date.now() });
-    setForm({ name: "", role: "選手" });
-  };
-  const remove = async (id) => {
-    if (!confirm("このメンバーを削除しますか？")) return;
-    await fb.deleteDoc(fb.doc(fb.db, "roster", id));
-  };
-
-  return (
-    <>
-      <Row>
-        <input style={{ ...input, flex: 1 }} placeholder="氏名（例：佐藤 太郎）"
-               value={form.name} onChange={(e)=>setForm({ ...form, name: e.target.value })}/>
-        <select style={select} value={form.role} onChange={(e)=>setForm({ ...form, role: e.target.value })}>
-          <option value="選手">選手</option><option value="コーチ">コーチ</option><option value="保護者">保護者</option>
-        </select>
-        <button style={btnPrimary} onClick={add}>追加</button>
-      </Row>
-
-      <ul style={{ listStyle:"none", padding:0, marginTop:12, border:"1px solid #eee", borderRadius:12 }}>
-        {roster.map((m)=>(
-          <li key={m.id} style={listItem}>
-            <div><b>{m.name}</b> <span style={{ color:"#777", fontSize:12 }}>（{m.role}）</span></div>
-            <button style={btnGhost} onClick={()=>remove(m.id)}>削除</button>
-          </li>
-        ))}
-        {roster.length===0 && <li style={{ padding:12, color:"#777" }}>まだ登録がありません。</li>}
-      </ul>
-    </>
-  );
-}
-
-/* ---- ちょい可愛い素朴スタイル ---- */
-const Page = ({ children }) => <div style={{ minHeight:"100vh", background:"#fafafa", color:"#111", padding:16 }}>{children}</div>;
-const Section = ({ children }) => <div style={{ maxWidth:900, margin:"0 auto" }}>{children}</div>;
-const Card = ({ children, style }) => <div style={{ background:"#fff", border:"1px solid #eee", borderRadius:16, padding:16, ...style }}>{children}</div>;
-const H1 = ({ children }) => <h1 style={{ fontSize:24, margin:0 }}>{children}</h1>;
-const H2 = ({ children }) => <h2 style={{ fontSize:18, margin:"4px 0 12px" }}>{children}</h2>;
-const Row = ({ children, right=false }) => <div style={{ display:"flex", gap:8, alignItems:"center", justifyContent:right?"flex-end":"flex-start", marginTop:8 }}>{children}</div>;
-const Center = ({ children }) => <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:"#444" }}>{children}</div>;
-
-const input = { padding:"10px 12px", border:"1px solid #ddd", borderRadius:10, width:140 };
-const smallInput = { ...input, width:90 };
-const textarea = { ...input, width:"100%", resize:"vertical" };
-const select = { ...input, width:120, paddingRight:28 };
-const btnPrimary = { padding:"10px 14px", background:"#4f46e5", color:"#fff", border:"none", borderRadius:12, cursor:"pointer" };
-const btnGhost = { padding:"8px 12px", background:"transparent", color:"#333", border:"1px solid #ddd", borderRadius:10, cursor:"pointer" };
-const listItem = { display:"flex", alignItems:"center", justifyContent:"space-between", padding:12, border:"1px solid #eee", borderRadius:12, marginBottom:8, background:"#fff" };
-const th = { textAlign:"left", padding:"10px 12px" };
-const td = { padding:"10px 12px" };
-
-function pad2(v){ return String(v||"").padStart(2,"0"); }
