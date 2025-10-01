@@ -1,6 +1,20 @@
+// src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  doc,
+  deleteDoc,
+  updateDoc,
+  setDoc,
+  query,
+  orderBy,
+} from "firebase/firestore";
 
-/** ================= Firebase設定（そのままでOK） ================= */
+/* ===== Firebase 設定（そのまま使用できます） ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyDEpxJ68m7uERr9EnJ3-13ahMhU0DLUWmw",
   authDomain: "eagles-event-appli.firebaseapp.com",
@@ -9,659 +23,735 @@ const firebaseConfig = {
   messagingSenderId: "908768795767",
   appId: "1:908768795767:web:f54b5e168d0d98d4efba72",
 };
+/* =============================================== */
 
-// CDN import（追加npm不要）
-async function loadFirebase() {
-  const { initializeApp } = await import(
-    "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js"
-  );
-  const firestore = await import(
-    "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js"
-  );
-  const app = initializeApp(firebaseConfig);
-  const db = firestore.getFirestore(app);
-  return { db, ...firestore };
+// 既に初期化済みでもOKにする
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ------------- 共通定義 -------------
+const ACCENT = "#2577ff";
+const TEXT = "#606060";
+const BG = "#ffffff";
+const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
+const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
+const GENDERS = ["男子", "女子"];
+const ATTEND_STATUSES = ["未回答", "出席", "欠席", "早退", "遅刻"];
+
+// Google Fonts 読み込み
+function useNotoSans() {
+  useEffect(() => {
+    const id = "noto-sans-jp";
+    if (!document.getElementById(id)) {
+      const link = document.createElement("link");
+      link.id = id;
+      link.href =
+        "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap";
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+  }, []);
 }
 
-/** ================== 最低限のスタイル ================== */
-const S = {
-  page: {
-    fontFamily:
-      '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Noto Sans JP"',
-    background: "#f7f7f7",
+// ミニCSS
+const styles = {
+  app: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+    background: BG,
+    color: TEXT,
     minHeight: "100svh",
-    padding: 12,
   },
-  wrap: { maxWidth: 560, margin: "0 auto" },
-  card: {
-    background: "#fff",
-    borderRadius: 14,
-    boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-    padding: 14,
-    marginBottom: 12,
+  wrap: {
+    maxWidth: 560,
+    margin: "0 auto",
+    padding: "12px 16px 48px",
   },
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
-  h2: { fontSize: 16, fontWeight: 700, margin: "12px 0 6px" },
-  row: { display: "flex", gap: 8, alignItems: "center" },
-  col: { display: "flex", flexDirection: "column", gap: 8 },
+  h2: {
+    fontSize: 18,
+    fontWeight: 500,
+    margin: "20px 0 8px",
+    borderLeft: `4px solid ${ACCENT}`,
+    paddingLeft: 8,
+  },
+  row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
   input: {
-    width: "100%",
     fontSize: 16,
-    padding: "12px 12px",
-    borderRadius: 12,
+    padding: "10px 12px",
     border: "1px solid #ddd",
-    background: "#fff",
+    borderRadius: 10,
+    outline: "none",
+    width: "100%",
   },
   select: {
-    width: "100%",
     fontSize: 16,
-    padding: "12px 12px",
-    borderRadius: 12,
+    padding: "10px 12px",
     border: "1px solid #ddd",
+    borderRadius: 10,
+    outline: "none",
     background: "#fff",
-  },
-  textarea: {
-    width: "100%",
-    minHeight: 120,
-    fontSize: 16,
-    padding: "12px",
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    resize: "vertical",
   },
   btn: {
-    appearance: "none",
-    border: "1px solid transparent",
-    borderRadius: 999,
-    padding: "12px 16px",
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: "pointer",
+    fontSize: 16,
+    fontWeight: 500,
+    padding: "12px 14px",
+    background: ACCENT,
+    color: "#fff",
+    borderRadius: 12,
+    border: 0,
+    width: "100%",
+  },
+  btnOutline: {
+    fontSize: 16,
+    fontWeight: 500,
+    padding: "12px 14px",
+    background: "#fff",
+    color: ACCENT,
+    borderRadius: 12,
+    border: `1px solid ${ACCENT}`,
+    width: "100%",
+  },
+  listItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 12px",
+    border: "1px solid #eee",
+    borderRadius: 12,
     background: "#fff",
   },
-  btnPrimary: { background: "#2563eb", color: "#fff", borderColor: "#2563eb" },
-  btnGhost: { color: "#2563eb", borderColor: "#cfe0ff" },
-  btnDanger: { background: "#ef4444", color: "#fff", borderColor: "#ef4444" },
-  listItem: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1.4fr auto",
-    gap: 8,
-    alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid #eee",
-  },
-  chipRow: { display: "flex", flexWrap: "wrap", gap: 8 },
-  chip: {
-    background: "#f1f5f9",
+  hr: { height: 1, background: "#eee", border: 0, margin: "16px 0" },
+  pill: {
+    display: "inline-block",
+    fontSize: 12,
+    color: "#fff",
+    background: ACCENT,
     borderRadius: 999,
-    padding: "6px 10px",
-    fontSize: 13,
-  },
-  footerBar: {
-    position: "sticky",
-    bottom: 0,
-    background: "linear-gradient(180deg, rgba(247,247,247,0.6) 0%, #f7f7f7 40%)",
-    padding: "10px 0 4px",
-    marginTop: 6,
+    padding: "3px 8px",
   },
 };
 
-/** ===================== メインアプリ ===================== */
-export default function App() {
-  const [fb, setFb] = useState(null);
-  const [ready, setReady] = useState(false);
+const pad2 = (n) => String(n).padStart(2, "0");
+const formatEventLine = (evt) =>
+  `${evt.month}/${pad2(evt.day)}(${evt.weekday}) ${evt.name || ""}`;
 
-  // --- Events ---
-  const [events, setEvents] = useState([]);
-  const [view, setView] = useState("list"); // 'list' | 'detail'
-  const [detailId, setDetailId] = useState(null);
-
-  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 10);
-  const [newEvent, setNewEvent] = useState({ date: today, title: "" });
-  const [draft, setDraft] = useState({
-    id: "",
-    date: today,
-    title: "",
-    note: "",
-    attendees: [],
+function sortPlayersForList(players) {
+  return [...players].sort((a, b) => {
+    const ga = parseInt(a.grade);
+    const gb = parseInt(b.grade);
+    if (ga !== gb) return gb - ga; // 6 → 1
+    return (a.name || "").localeCompare(b.name || "");
   });
+}
 
-  // --- Roster（選手）---
-  const [roster, setRoster] = useState([]); // {id,name,gender:'男子'|'女子'}
-  const [newMember, setNewMember] = useState({ name: "", gender: "男子" });
+// ---------------- App ----------------
+export default function App() {
+  useNotoSans();
 
-  // Firebase init & subscriptions
+  const [view, setView] = useState("top"); // "top" | "detail"
+  const [selectedEventId, setSelectedEventId] = useState(null);
+
+  // イベント一覧（※複合 orderBy。where を付けてないのでインデックス不要）
+  const [events, setEvents] = useState([]);
   useEffect(() => {
-    (async () => {
-      const lib = await loadFirebase();
-      setFb(lib);
-
-      // events: dateのみで並び替え（登録できないのを回避）
-      const evCol = lib.collection(lib.db, "events");
-      const evQ = lib.query(evCol, lib.orderBy("date", "asc"));
-      const un1 = lib.onSnapshot(evQ, (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setEvents(list);
-      });
-
-      // roster: 名前昇順
-      const roCol = lib.collection(lib.db, "roster");
-      const roQ = lib.query(roCol, lib.orderBy("name", "asc"));
-      const un2 = lib.onSnapshot(roQ, (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setRoster(list);
-      });
-
-      setReady(true);
-      return () => {
-        un1 && un1();
-        un2 && un2();
-      };
-    })();
+    const q = query(
+      collection(db, "events"),
+      orderBy("month", "asc"),
+      orderBy("day", "asc")
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setEvents(arr);
+      },
+      (err) => {
+        console.error("events onSnapshot error:", err);
+        alert("イベント一覧の取得に失敗しました。\n" + err.message);
+      }
+    );
+    return () => unsub();
   }, []);
 
-  // ====== Events handlers ======
-  const openDetail = (id) => {
-    const ev = events.find((e) => e.id === id);
-    if (!ev) return;
-    setDetailId(id);
-    setDraft({
-      id,
-      date: ev.date || today,
-      title: ev.title || "",
-      note: ev.note || "",
-      attendees: Array.isArray(ev.attendees) ? ev.attendees : [],
-    });
+  // 選手一覧
+  const [players, setPlayers] = useState([]);
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "players"),
+      (snap) => {
+        const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setPlayers(sortPlayersForList(arr));
+      },
+      (err) => {
+        console.error("players onSnapshot error:", err);
+        alert("選手一覧の取得に失敗しました。\n" + err.message);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  const goDetail = (id) => {
+    setSelectedEventId(id);
     setView("detail");
-    window.scrollTo({ top: 0, behavior: "instant" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const backTop = () => {
+    setSelectedEventId(null);
+    setView("top");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const addEvent = async () => {
-    try {
-      if (!newEvent.title.trim()) {
-        alert("イベント名を入力してください");
-        return;
-      }
-      const evCol = fb.collection(fb.db, "events");
-      await fb.addDoc(evCol, {
-        date: newEvent.date || today,
-        title: newEvent.title.trim(),
-        note: "",
-        attendees: [],
-        createdAt: fb.serverTimestamp(),
-        updatedAt: fb.serverTimestamp(),
-      });
-      setNewEvent({ date: today, title: "" });
-    } catch (err) {
-      console.error(err);
-      alert("イベントの登録に失敗しました。\n" + (err?.message || ""));
-    }
-  };
-
-  const deleteEvent = async (id) => {
-    try {
-      if (!confirm("このイベントを削除しますか？")) return;
-      await fb.deleteDoc(fb.doc(fb.db, "events", id));
-      if (detailId === id) {
-        setView("list");
-        setDetailId(null);
-      }
-    } catch (err) {
-      alert("削除に失敗しました。\n" + (err?.message || ""));
-    }
-  };
-
-  const saveDetail = async () => {
-    try {
-      if (!draft.id) return;
-      const ref = fb.doc(fb.db, "events", draft.id);
-      await fb.updateDoc(ref, {
-        date: draft.date,
-        title: draft.title,
-        note: draft.note,
-        attendees: draft.attendees,
-        updatedAt: fb.serverTimestamp(),
-      });
-      alert("保存しました");
-    } catch (err) {
-      alert("保存に失敗しました。\n" + (err?.message || ""));
-    }
-  };
-
-  // ====== Roster handlers ======
-  const addMember = async () => {
-    try {
-      const name = (newMember.name || "").trim();
-      if (!name) {
-        alert("選手名を入力してください");
-        return;
-      }
-      const roCol = fb.collection(fb.db, "roster");
-      await fb.addDoc(roCol, {
-        name,
-        gender: newMember.gender || "男子",
-        createdAt: fb.serverTimestamp(),
-      });
-      setNewMember({ name: "", gender: "男子" });
-    } catch (err) {
-      alert("選手の登録に失敗しました。\n" + (err?.message || ""));
-    }
-  };
-
-  const deleteMember = async (id) => {
-    try {
-      await fb.deleteDoc(fb.doc(fb.db, "roster", id));
-    } catch (err) {
-      alert("削除に失敗しました。\n" + (err?.message || ""));
-    }
-  };
-
-  // 男女で分けたリスト
-  const boys = useMemo(
-    () => roster.filter((r) => r.gender === "男子"),
-    [roster]
-  );
-  const girls = useMemo(
-    () => roster.filter((r) => r.gender === "女子"),
-    [roster]
-  );
-
-  // ===== 画面 =====
-  if (!ready) {
-    return (
-      <div style={{ ...S.page, display: "grid", placeItems: "center" }}>
-        Firebase を初期化しています…
-      </div>
-    );
-  }
-
-  if (view === "detail" && detailId) {
-    return (
-      <div style={S.page}>
-        <div style={{ ...S.wrap, ...S.col }}>
-          {/* 上部：登録ページへ戻る */}
-          <div style={{ ...S.row, justifyContent: "space-between" }}>
-            <button
-              style={{ ...S.btn, ...S.btnGhost }}
-              onClick={() => {
-                setView("list");
-                setDetailId(null);
-              }}
-            >
-              ← 登録ページに戻る
-            </button>
-          </div>
-
-          <div style={S.card}>
-            <div style={S.h1}>イベント詳細</div>
-
-            {/* すべて縦並び */}
-            <label>
-              <div style={S.h2}>日付</div>
-              <input
-                type="date"
-                style={S.input}
-                value={draft.date}
-                onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-              />
-            </label>
-
-            <label>
-              <div style={S.h2}>イベント名</div>
-              <input
-                type="text"
-                style={S.input}
-                placeholder="例）練習試合 vs ○○"
-                value={draft.title}
-                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              />
-            </label>
-
-            <section>
-              <div style={S.h2}>自由記入（メモ）</div>
-              <textarea
-                style={S.textarea}
-                placeholder="持ち物、集合、補足など"
-                value={draft.note}
-                onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-              />
-            </section>
-
-            <AttendeeEditor draft={draft} setDraft={setDraft} />
-
-            {/* 下部：保存／トップへ */}
-            <div style={S.footerBar}>
-              <div style={{ ...S.row, gap: 10 }}>
-                <button
-                  style={{ ...S.btn, ...S.btnPrimary, flex: 1 }}
-                  onClick={saveDetail}
-                >
-                  保存
-                </button>
-                <button
-                  style={{ ...S.btn, ...S.btnGhost, flex: 1 }}
-                  onClick={() => {
-                    setView("list");
-                    setDetailId(null);
-                  }}
-                >
-                  トップへ戻る
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <button
-            style={{ ...S.btn, ...S.btnDanger }}
-            onClick={() => deleteEvent(detailId)}
-          >
-            このイベントを削除
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ===== トップ（登録＋一覧＋選手登録） =====
   return (
-    <div style={S.page}>
-      <div style={S.wrap}>
-        {/* イベント登録 */}
-        <div style={S.card}>
-          <div style={S.h1}>イベント登録</div>
-          <div style={S.col}>
-            <label>
-              <div style={S.h2}>日付</div>
-              <input
-                type="date"
-                style={S.input}
-                value={newEvent.date}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, date: e.target.value })
-                }
-              />
-            </label>
+    <div style={styles.app}>
+      <div style={styles.wrap}>
+        {view === "top" && (
+          <TopPage
+            events={events}
+            players={players}
+            onDeleteEvent={async (id) => {
+              if (!window.confirm("このイベントを削除しますか？")) return;
+              try {
+                await deleteDoc(doc(db, "events", id));
+              } catch (e) {
+                console.error("delete event error:", e);
+                alert("イベント削除に失敗しました。\n" + e.message);
+              }
+            }}
+            onOpenDetail={goDetail}
+          />
+        )}
 
-            <label>
-              <div style={S.h2}>イベント名</div>
-              <input
-                type="text"
-                style={S.input}
-                placeholder="例）練習（体育館）"
-                value={newEvent.title}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, title: e.target.value })
-                }
-              />
-            </label>
-
-            <div style={{ ...S.row, marginTop: 6 }}>
-              <button
-                style={{ ...S.btn, ...S.btnPrimary, width: "100%" }}
-                onClick={addEvent}
-              >
-                ＋ 登録する
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* イベント一覧 */}
-        <div style={S.card}>
-          <div style={S.h1}>イベント一覧</div>
-          {events.length === 0 ? (
-            <div style={{ color: "#6b7280", fontSize: 14 }}>
-              まだイベントがありません。上のフォームから登録してください。
-            </div>
-          ) : (
-            <div>
-              {events.map((ev) => (
-                <div key={ev.id} style={S.listItem}>
-                  <button
-                    onClick={() => openDetail(ev.id)}
-                    style={{ ...S.btn, ...S.btnGhost }}
-                    title="詳細を開く"
-                  >
-                    {ev.date}
-                  </button>
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={ev.title}
-                    onClick={() => openDetail(ev.id)}
-                  >
-                    {ev.title || "（無題）"}
-                  </div>
-                  <button
-                    style={{ ...S.btn, ...S.btnDanger }}
-                    onClick={() => deleteEvent(ev.id)}
-                  >
-                    削除
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 選手登録 */}
-        <div style={S.card}>
-          <div style={S.h1}>選手登録</div>
-          <div style={S.col}>
-            <label>
-              <div style={S.h2}>名前</div>
-              <input
-                type="text"
-                style={S.input}
-                placeholder="例）山田 太郎"
-                value={newMember.name}
-                onChange={(e) =>
-                  setNewMember({ ...newMember, name: e.target.value })
-                }
-                onKeyDown={(e) => e.key === "Enter" && addMember()}
-              />
-            </label>
-
-            <label>
-              <div style={S.h2}>区分</div>
-              <select
-                style={S.select}
-                value={newMember.gender}
-                onChange={(e) =>
-                  setNewMember({ ...newMember, gender: e.target.value })
-                }
-              >
-                <option>男子</option>
-                <option>女子</option>
-              </select>
-            </label>
-
-            <div style={{ ...S.row, marginTop: 6 }}>
-              <button
-                style={{ ...S.btn, ...S.btnPrimary, width: "100%" }}
-                onClick={addMember}
-              >
-                ＋ 選手を登録
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 男女リスト */}
-        <div style={S.card}>
-          <div style={S.h1}>選手一覧</div>
-
-          <div style={{ marginBottom: 10, fontWeight: 700 }}>男子</div>
-          {boys.length === 0 ? (
-            <div style={{ color: "#6b7280", fontSize: 14, marginBottom: 12 }}>
-              未登録
-            </div>
-          ) : (
-            boys.map((m) => (
-              <PlayerRow key={m.id} m={m} onDelete={() => deleteMember(m.id)} />
-            ))
-          )}
-
-          <div style={{ marginTop: 18, marginBottom: 10, fontWeight: 700 }}>
-            女子
-          </div>
-          {girls.length === 0 ? (
-            <div style={{ color: "#6b7280", fontSize: 14 }}>未登録</div>
-          ) : (
-            girls.map((m) => (
-              <PlayerRow key={m.id} m={m} onDelete={() => deleteMember(m.id)} />
-            ))
-          )}
-        </div>
+        {view === "detail" && selectedEventId && (
+          <DetailPage
+            eventId={selectedEventId}
+            players={players}
+            onBack={backTop}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-/** ============== 出欠エディタ（縦配置・カウント付き） ============== */
-function AttendeeEditor({ draft, setDraft }) {
+// ---------------- Top Page ----------------
+function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
+  // イベント登録フォーム
+  const [month, setMonth] = useState("");
+  const [day, setDay] = useState("");
+  const [weekday, setWeekday] = useState("");
   const [name, setName] = useState("");
+  const [savingEvent, setSavingEvent] = useState(false);
 
-  const add = () => {
-    const n = name.trim();
-    if (!n) return;
-    const item = {
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-      name: n,
-      status: "未定",
-    };
-    setDraft({ ...draft, attendees: [...draft.attendees, item] });
-    setName("");
-  };
+  async function registerEvent() {
+    if (!month || !day || !weekday || !name.trim()) {
+      alert("月・日・曜日・イベント名を入力してください。");
+      return;
+    }
+    try {
+      setSavingEvent(true);
+      await addDoc(collection(db, "events"), {
+        month: Number(month),
+        day: Number(day),
+        weekday,
+        name: name.trim(),
+        place: "",
+        meetTime: "",
+        detail: "",
+        items: "",
+        coachMemo: "",
+        escortMemo: "",
+        carMemo: "",
+        noteMemo: "",
+        createdAt: Date.now(),
+      });
+      // 入力リセット
+      setMonth("");
+      setDay("");
+      setWeekday("");
+      setName("");
+    } catch (e) {
+      console.error("add event error:", e);
+      alert("イベントの登録に失敗しました。\n" + e.message);
+    } finally {
+      setSavingEvent(false);
+    }
+  }
 
-  const updateStatus = (id, status) => {
-    setDraft({
-      ...draft,
-      attendees: draft.attendees.map((p) =>
-        p.id === id ? { ...p, status } : p
-      ),
-    });
-  };
+  // 選手登録
+  const [pName, setPName] = useState("");
+  const [pGrade, setPGrade] = useState("");
+  const [pGender, setPGender] = useState("");
+  const [savingPlayer, setSavingPlayer] = useState(false);
 
-  const remove = (id) => {
-    setDraft({
-      ...draft,
-      attendees: draft.attendees.filter((p) => p.id !== id),
-    });
-  };
+  async function registerPlayer() {
+    if (!pName.trim() || !pGrade || !pGender) {
+      alert("名前・学年・性別を入力してください。");
+      return;
+    }
+    try {
+      setSavingPlayer(true);
+      await addDoc(collection(db, "players"), {
+        name: pName.trim(),
+        grade: pGrade.replace("年", ""),
+        gender: pGender,
+        createdAt: Date.now(),
+      });
+      setPName("");
+      setPGrade("");
+      setPGender("");
+    } catch (e) {
+      console.error("add player error:", e);
+      alert("選手の登録に失敗しました。\n" + e.message);
+    } finally {
+      setSavingPlayer(false);
+    }
+  }
 
-  const stats = useMemo(() => {
-    const s = { 出席: 0, 欠席: 0, 未定: 0 };
-    draft.attendees.forEach((p) => (s[p.status] = (s[p.status] || 0) + 1));
-    return s;
-  }, [draft.attendees]);
+  const boys = players.filter((p) => p.gender === "男子");
+  const girls = players.filter((p) => p.gender === "女子");
 
   return (
-    <section style={S.col}>
-      <div style={S.h2}>出欠</div>
+    <>
+      <h1 style={styles.h1}>イベント管理App</h1>
 
-      <div style={S.row}>
+      {/* イベント登録 */}
+      <h2 style={styles.h2}>イベント登録</h2>
+      <div className="grid" style={{ display: "grid", gap: 8 }}>
+        <div style={styles.row}>
+          <select
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            style={styles.select}
+          >
+            <option value="">月</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                {m}月
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={day}
+            onChange={(e) => setDay(e.target.value)}
+            style={styles.select}
+          >
+            <option value="">日</option>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>
+                {d}日
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={weekday}
+            onChange={(e) => setWeekday(e.target.value)}
+            style={styles.select}
+          >
+            <option value="">曜日</option>
+            {WEEKDAYS.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <input
-          type="text"
-          style={{ ...S.input, flex: 1 }}
-          placeholder="参加者名を追加（例：山田 太郎）"
+          style={styles.input}
+          placeholder="イベント名"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
         />
-        <button style={{ ...S.btn, ...S.btnGhost }} onClick={add}>
-          追加
+
+        <button style={styles.btn} onClick={registerEvent} disabled={savingEvent}>
+          {savingEvent ? "登録中…" : "登録"}
         </button>
       </div>
 
-      {draft.attendees.length === 0 ? (
-        <div style={{ color: "#6b7280", fontSize: 14 }}>
-          参加者を追加すると、ここで「出席・欠席・未定」を選べます。
-        </div>
-      ) : (
-        <div style={{ ...S.col, gap: 10 }}>
-          {draft.attendees.map((p) => (
-            <div
-              key={p.id}
+      <hr style={styles.hr} />
+
+      {/* イベント一覧 */}
+      <h2 style={styles.h2}>イベント一覧</h2>
+      <div style={{ display: "grid", gap: 8 }}>
+        {events.length === 0 && (
+          <div style={{ color: "#999", fontSize: 14 }}>イベントはまだありません</div>
+        )}
+        {events.map((evt) => (
+          <div key={evt.id} style={styles.listItem}>
+            <button
+              onClick={() => onOpenDetail(evt.id)}
               style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
-                padding: 10,
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                alignItems: "center",
-                gap: 8,
-                background: "#fcfcfc",
+                background: "transparent",
+                border: 0,
+                textAlign: "left",
+                padding: 0,
+                color: TEXT,
+                fontSize: 16,
+                fontWeight: 500,
+                flex: 1,
               }}
+              title="詳細を開く"
             >
-              <div style={{ fontWeight: 700 }}>{p.name}</div>
-              <button
-                onClick={() => remove(p.id)}
-                style={{ ...S.btn, ...S.btnDanger }}
-                title="この参加者を削除"
-              >
-                削除
-              </button>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <div style={S.chipRow}>
-                  {["出席", "欠席", "未定"].map((s) => (
-                    <label key={s} style={S.chip}>
-                      <input
-                        type="radio"
-                        name={`status-${p.id}`}
-                        value={s}
-                        checked={p.status === s}
-                        onChange={() => updateStatus(p.id, s)}
-                        style={{ marginRight: 6 }}
-                      />
-                      {s}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          <div style={{ ...S.chipRow, marginTop: 2 }}>
-            <span style={S.chip}>出席 {stats.出席}</span>
-            <span style={S.chip}>欠席 {stats.欠席}</span>
-            <span style={S.chip}>未定 {stats.未定}</span>
-            <span style={S.chip}>合計 {draft.attendees.length}</span>
+              {formatEventLine(evt)}
+            </button>
+            <button
+              onClick={() => onDeleteEvent(evt.id)}
+              style={{ ...styles.btnOutline, width: "auto", padding: "8px 10px" }}
+            >
+              削除
+            </button>
           </div>
+        ))}
+      </div>
+
+      <hr style={styles.hr} />
+
+      {/* 選手登録 */}
+      <h2 style={styles.h2}>選手登録</h2>
+      <div style={{ display: "grid", gap: 8 }}>
+        <input
+          style={styles.input}
+          placeholder="なまえ"
+          maxLength={20}
+          value={pName}
+          onChange={(e) => setPName(e.target.value)}
+        />
+        <div style={styles.row}>
+          <select
+            value={pGrade}
+            onChange={(e) => setPGrade(e.target.value)}
+            style={{ ...styles.select, flex: 1 }}
+          >
+            <option value="">学年</option>
+            {GRADES.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={pGender}
+            onChange={(e) => setPGender(e.target.value)}
+            style={{ ...styles.select, flex: 1 }}
+          >
+            <option value="">性別</option>
+            {GENDERS.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
-    </section>
+
+        <button style={styles.btn} onClick={registerPlayer} disabled={savingPlayer}>
+          {savingPlayer ? "登録中…" : "登録"}
+        </button>
+      </div>
+
+      <hr style={styles.hr} />
+
+      {/* 選手一覧 */}
+      <h2 style={styles.h2}>選手一覧</h2>
+
+      <div style={{ display: "grid", gap: 4, marginBottom: 12 }}>
+        <div>
+          <span style={styles.pill}>男子 合計 {boys.length}名</span>
+        </div>
+        {sortPlayersForList(boys).map((p) => (
+          <div key={p.id} style={styles.listItem}>
+            <div style={{ fontSize: 16 }}>
+              <b>{p.grade}年</b> {p.name}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gap: 4 }}>
+        <div>
+          <span style={styles.pill}>女子 合計 {girls.length}名</span>
+        </div>
+        {sortPlayersForList(girls).map((p) => (
+          <div key={p.id} style={styles.listItem}>
+            <div style={{ fontSize: 16 }}>
+              <b>{p.grade}年</b> {p.name}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
-/** ============== 選手行コンポーネント ============== */
-function PlayerRow({ m, onDelete }) {
+// ---------------- Detail Page ----------------
+function DetailPage({ eventId, players, onBack }) {
+  const [eventData, setEventData] = useState(null);
+
+  // イベント購読
+  useEffect(() => {
+    const ref = doc(db, "events", eventId);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => setEventData({ id: snap.id, ...snap.data() }),
+      (err) => {
+        console.error("event detail onSnapshot error:", err);
+        alert("イベント詳細の取得に失敗しました。\n" + err.message);
+      }
+    );
+    return () => unsub();
+  }, [eventId]);
+
+  // 出欠サブコレクション
+  const [attendMap, setAttendMap] = useState({});
+  useEffect(() => {
+    const ref = collection(db, "events", eventId, "attendance");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const map = {};
+        snap.forEach((d) => (map[d.id] = d.data()));
+        setAttendMap(map);
+      },
+      (err) => {
+        console.error("attendance onSnapshot error:", err);
+        alert("出欠情報の取得に失敗しました。\n" + err.message);
+      }
+    );
+    return () => unsub();
+  }, [eventId]);
+
+  // 入力コントロール
+  const [place, setPlace] = useState("");
+  const [meetTime, setMeetTime] = useState("");
+  const [detail, setDetail] = useState("");
+  const [items, setItems] = useState("");
+  const [coachMemo, setCoachMemo] = useState("");
+  const [escortMemo, setEscortMemo] = useState("");
+  const [carMemo, setCarMemo] = useState("");
+  const [noteMemo, setNoteMemo] = useState("");
+
+  useEffect(() => {
+    if (!eventData) return;
+    setPlace(eventData.place || "");
+    setMeetTime(eventData.meetTime || "");
+    setDetail(eventData.detail || "");
+    setItems(eventData.items || "");
+    setCoachMemo(eventData.coachMemo || "");
+    setEscortMemo(eventData.escortMemo || "");
+    setCarMemo(eventData.carMemo || "");
+    setNoteMemo(eventData.noteMemo || "");
+  }, [eventData]);
+
+  const boys = useMemo(
+    () => sortPlayersForList(players.filter((p) => p.gender === "男子")),
+    [players]
+  );
+  const girls = useMemo(
+    () => sortPlayersForList(players.filter((p) => p.gender === "女子")),
+    [players]
+  );
+
+  const boysPresent = useMemo(
+    () =>
+      Object.values(attendMap).filter(
+        (v) => v.gender === "男子" && v.status === "出席"
+      ).length,
+    [attendMap]
+  );
+  const girlsPresent = useMemo(
+    () =>
+      Object.values(attendMap).filter(
+        (v) => v.gender === "女子" && v.status === "出席"
+      ).length,
+    [attendMap]
+  );
+
+  function updateLocalAttendance(player, status) {
+    setAttendMap((prev) => ({
+      ...prev,
+      [player.id]: {
+        status,
+        gender: player.gender,
+        grade: `${player.grade}年`,
+        name: player.name,
+      },
+    }));
+  }
+
+  async function saveAll() {
+    try {
+      await updateDoc(doc(db, "events", eventId), {
+        place,
+        meetTime,
+        detail,
+        items,
+        coachMemo,
+        escortMemo,
+        carMemo,
+        noteMemo,
+        updatedAt: Date.now(),
+      });
+
+      const writes = Object.entries(attendMap).map(([pid, v]) =>
+        setDoc(doc(db, "events", eventId, "attendance", pid), v, { merge: true })
+      );
+      await Promise.all(writes);
+
+      alert("登録しました");
+    } catch (e) {
+      console.error("saveAll error:", e);
+      alert("保存に失敗しました。\n" + e.message);
+    }
+  }
+
+  if (!eventData) return null;
+
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 0",
-        borderBottom: "1px solid #eee",
-      }}
-    >
-      <div>
-        <div style={{ fontWeight: 700 }}>{m.name}</div>
-        <div style={{ fontSize: 12, color: "#6b7280" }}>{m.gender}</div>
+    <>
+      <h1 style={styles.h1}>イベント詳細</h1>
+
+      <h2 style={styles.h2}>イベント情報</h2>
+      <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ fontSize: 16 }}>
+          <b>
+            {eventData.month}/{pad2(eventData.day)}({eventData.weekday})
+          </b>{" "}
+          {eventData.name}
+        </div>
+
+        <input
+          style={styles.input}
+          placeholder="場所"
+          value={place}
+          onChange={(e) => setPlace(e.target.value)}
+        />
+        <input
+          style={styles.input}
+          placeholder="集合時間"
+          value={meetTime}
+          onChange={(e) => setMeetTime(e.target.value)}
+        />
+        <textarea
+          style={{ ...styles.input, minHeight: 80 }}
+          placeholder="詳細"
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+        />
+        <textarea
+          style={{ ...styles.input, minHeight: 80 }}
+          placeholder="もちもの"
+          value={items}
+          onChange={(e) => setItems(e.target.value)}
+        />
       </div>
-      <button style={{ ...S.btn, ...S.btnDanger }} onClick={onDelete}>
-        削除
-      </button>
-    </div>
+
+      <hr style={styles.hr} />
+
+      <h2 style={styles.h2}>選手出欠管理</h2>
+      <div style={{ fontSize: 14, marginBottom: 8 }}>
+        出席合計：<b>男子 {boysPresent}名</b> / <b>女子 {girlsPresent}名</b>
+      </div>
+
+      {/* 男子 */}
+      <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+        <div>
+          <span style={styles.pill}>男子</span>
+        </div>
+        {boys.map((p) => {
+          const current = attendMap[p.id]?.status || "未回答";
+          return (
+            <div key={p.id} style={styles.listItem}>
+              <div style={{ fontSize: 16, marginRight: 8 }}>
+                <b>{p.grade}年</b> {p.name}
+              </div>
+              <select
+                style={styles.select}
+                value={current}
+                onChange={(e) => updateLocalAttendance(p, e.target.value)}
+              >
+                {ATTEND_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 女子 */}
+      <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+        <div>
+          <span style={styles.pill}>女子</span>
+        </div>
+        {girls.map((p) => {
+          const current = attendMap[p.id]?.status || "未回答";
+          return (
+            <div key={p.id} style={styles.listItem}>
+              <div style={{ fontSize: 16, marginRight: 8 }}>
+                <b>{p.grade}年</b> {p.name}
+              </div>
+              <select
+                style={styles.select}
+                value={current}
+                onChange={(e) => updateLocalAttendance(p, e.target.value)}
+              >
+                {ATTEND_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+
+      <hr style={styles.hr} />
+
+      <h2 style={styles.h2}>コーチ出欠</h2>
+      <textarea
+        style={{ ...styles.input, minHeight: 80 }}
+        placeholder="コーチ出欠"
+        value={coachMemo}
+        onChange={(e) => setCoachMemo(e.target.value)}
+      />
+
+      <h2 style={styles.h2}>引率</h2>
+      <textarea
+        style={{ ...styles.input, minHeight: 80 }}
+        placeholder="引率"
+        value={escortMemo}
+        onChange={(e) => setEscortMemo(e.target.value)}
+      />
+
+      <h2 style={styles.h2}>配車</h2>
+      <textarea
+        style={{ ...styles.input, minHeight: 80 }}
+        placeholder="配車"
+        value={carMemo}
+        onChange={(e) => setCarMemo(e.target.value)}
+      />
+
+      <h2 style={styles.h2}>その他補足</h2>
+      <textarea
+        style={{ ...styles.input, minHeight: 80 }}
+        placeholder="その他補足"
+        value={noteMemo}
+        onChange={(e) => setNoteMemo(e.target.value)}
+      />
+
+      <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        <button style={styles.btn} onClick={saveAll}>
+          登録
+        </button>
+        <button style={styles.btnOutline} onClick={onBack}>
+          トップページにもどる
+        </button>
+      </div>
+    </>
   );
 }
