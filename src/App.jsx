@@ -23,7 +23,6 @@ const firebaseConfig = {
   messagingSenderId: "908768795767",
   appId: "1:908768795767:web:f54b5e168d0d98d4efba72",
 };
-
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -51,6 +50,19 @@ function useNotoSans() {
   }, []);
 }
 
+// 画面幅（PC/スマホ）判定
+function useIsDesktop(breakpoint = 768) {
+  const [isDesktop, setIsDesktop] = useState(
+    typeof window !== "undefined" ? window.innerWidth >= breakpoint : true
+  );
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth >= breakpoint);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+  return isDesktop;
+}
+
 // --------- スタイル ---------
 const styles = {
   app: {
@@ -60,19 +72,20 @@ const styles = {
     minHeight: "100svh",
     colorScheme: "light", // ⑥ ダークモード無効化
   },
-  shell: {
+  shellBase: {
     minHeight: "100svh",
     display: "flex",
-    justifyContent: "center", // ① 横センター
-    padding: "16px 12px",
+    justifyContent: "center",
+    padding: "32px", // ②スマホ指定：上下左右32pxマージン相当
   },
   card: {
     width: "100%",
-    maxWidth: 800,
+    maxWidth: 400,        // ① PCは400pxカード
     background: BG,
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
     padding: "12px 16px 48px",
+    boxSizing: "border-box",
   },
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
   h2: {
@@ -89,7 +102,7 @@ const styles = {
     border: "1px solid #ddd",
     borderRadius: 10,
     outline: "none",
-    width: "100%",           // ⑤ はみ出し防止
+    width: "100%",      // ⑤ はみ出し防止
     maxWidth: "100%",
     boxSizing: "border-box",
     background: "#fff",
@@ -191,6 +204,13 @@ function sortPlayersForList(players) {
 // ---------------- App ----------------
 export default function App() {
   useNotoSans();
+  const isDesktop = useIsDesktop(); // 768px以上をPC扱い
+
+  // shellの縦方向：PCは中央、スマホは上寄せ（32px余白）
+  const shellStyle = {
+    ...styles.shellBase,
+    alignItems: isDesktop ? "center" : "flex-start",
+  };
 
   const [view, setView] = useState("top"); // "top" | "detail"
   const [selectedEventId, setSelectedEventId] = useState(null);
@@ -247,7 +267,7 @@ export default function App() {
 
   return (
     <div style={styles.app}>
-      <div style={styles.shell}>
+      <div style={shellStyle}>
         <div style={styles.card}>
           {view === "top" && (
             <TopPage
@@ -352,7 +372,6 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
     }
   }
 
-  // 男女配列
   const boys = players.filter((p) => p.gender === "男子");
   const girls = players.filter((p) => p.gender === "女子");
 
@@ -456,14 +475,13 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
 
       {/* 選手登録 */}
       <h2 style={styles.h2}>選手登録</h2>
-      {/* ⑦ 男女別合計を見出し直下にも表示 */}
       <div style={{ fontSize: 14, marginBottom: 8 }}>
         登録合計：<b>男子 {boys.length}名</b> / <b>女子 {girls.length}名</b>
       </div>
       <div style={{ display: "grid", gap: 8 }}>
         <input
           style={styles.input}
-          placeholder="なまえ"
+          placeholder="なまえ（7文字程度）"
           maxLength={20}
           value={pName}
           onChange={(e) => setPName(e.target.value)}
@@ -572,7 +590,7 @@ function DetailPage({ eventId, players, onBack }) {
     return () => unsub();
   }, [eventId]);
 
-  // 入力コントロール（④ もちもの → 詳細 の順で表示）
+  // 入力コントロール（「もちもの → 詳細」の順で表示）
   const [place, setPlace] = useState("");
   const [meetTime, setMeetTime] = useState("");
   const [items, setItems] = useState("");    // もちもの
@@ -604,23 +622,23 @@ function DetailPage({ eventId, players, onBack }) {
     [players]
   );
 
-  // ② 出席者の合計と名前一覧
-  const boysPresentNames = useMemo(() => {
-    const list = [];
+  // ② 出席者の合計と名前一覧（男女別）
+  const boysPresent = useMemo(() => {
+    const names = [];
     for (const p of boys) {
       const st = attendMap[p.id]?.status || "未回答";
-      if (st === "出席") list.push(p.name || attendMap[p.id]?.name || "");
+      if (st === "出席") names.push(p.name || attendMap[p.id]?.name || "");
     }
-    return list;
+    return { count: names.length, names };
   }, [boys, attendMap]);
 
-  const girlsPresentNames = useMemo(() => {
-    const list = [];
+  const girlsPresent = useMemo(() => {
+    const names = [];
     for (const p of girls) {
       const st = attendMap[p.id]?.status || "未回答";
-      if (st === "出席") list.push(p.name || attendMap[p.id]?.name || "");
+      if (st === "出席") names.push(p.name || attendMap[p.id]?.name || "");
     }
-    return list;
+    return { count: names.length, names };
   }, [girls, attendMap]);
 
   function updateLocalAttendance(player, status) {
@@ -706,15 +724,15 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>選手出欠管理</h2>
 
-      {/* ② 合計と名前一覧を男女別に表示 */}
+      {/* ② 合計値＋名前一覧（男女別） */}
       <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
         <div>
-          <b>男子 {boysPresentNames.length}名：</b>
-          {boysPresentNames.length ? boysPresentNames.join("、") : "—"}
+          <b>男子 {boysPresent.count}名：</b>
+          {boysPresent.names.length ? boysPresent.names.join("、") : "—"}
         </div>
         <div>
-          <b>女子 {girlsPresentNames.length}名：</b>
-          {girlsPresentNames.length ? girlsPresentNames.join("、") : "—"}
+          <b>女子 {girlsPresent.count}名：</b>
+          {girlsPresent.names.length ? girlsPresent.names.join("、") : "—"}
         </div>
       </div>
 
