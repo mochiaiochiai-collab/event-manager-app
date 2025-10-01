@@ -14,7 +14,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 
-/* ===== Firebase 設定（そのまま使用できます） ===== */
+/* ===== Firebase 設定 ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyDEpxJ68m7uERr9EnJ3-13ahMhU0DLUWmw",
   authDomain: "eagles-event-appli.firebaseapp.com",
@@ -23,13 +23,11 @@ const firebaseConfig = {
   messagingSenderId: "908768795767",
   appId: "1:908768795767:web:f54b5e168d0d98d4efba72",
 };
-/* =============================================== */
 
-// 既に初期化済みでもOKにする
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// ------------- 共通定義 -------------
+// --------- 共通値 ---------
 const ACCENT = "#2577ff";
 const TEXT = "#606060";
 const BG = "#ffffff";
@@ -38,7 +36,7 @@ const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
 const GENDERS = ["男子", "女子"];
 const ATTEND_STATUSES = ["未回答", "出席", "欠席", "早退", "遅刻"];
 
-// Google Fonts 読み込み
+// Google Fonts
 function useNotoSans() {
   useEffect(() => {
     const id = "noto-sans-jp";
@@ -53,17 +51,27 @@ function useNotoSans() {
   }, []);
 }
 
-// ミニCSS
+// --------- スタイル ---------
 const styles = {
   app: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
-    background: BG,
+    background: "#f5f7fb",
     color: TEXT,
     minHeight: "100svh",
+    colorScheme: "light", // ⑥ ダークモード無効化
   },
-  wrap: {
-    maxWidth: 560,
-    margin: "0 auto",
+  shell: {
+    minHeight: "100svh",
+    display: "flex",
+    justifyContent: "center", // ① 横センター
+    padding: "16px 12px",
+  },
+  card: {
+    width: "100%",
+    maxWidth: 800,
+    background: BG,
+    borderRadius: 16,
+    boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
     padding: "12px 16px 48px",
   },
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
@@ -81,7 +89,25 @@ const styles = {
     border: "1px solid #ddd",
     borderRadius: 10,
     outline: "none",
+    width: "100%",           // ⑤ はみ出し防止
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    background: "#fff",
+    color: TEXT,
+  },
+  textarea: {
+    fontSize: 16,
+    padding: "10px 12px",
+    border: "1px solid #ddd",
+    borderRadius: 10,
+    outline: "none",
     width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    background: "#fff",
+    color: TEXT,
+    minHeight: 80,
+    resize: "vertical",
   },
   select: {
     fontSize: 16,
@@ -90,6 +116,9 @@ const styles = {
     borderRadius: 10,
     outline: "none",
     background: "#fff",
+    color: TEXT,
+    boxSizing: "border-box",
+    appearance: "none",
   },
   btn: {
     fontSize: 16,
@@ -131,6 +160,21 @@ const styles = {
   },
 };
 
+// ③ ステータス別の背景色
+function statusBg(status) {
+  switch (status) {
+    case "出席":
+      return { backgroundColor: "#E9F2FF", borderColor: "#C9DFFF" }; // 薄いブルー
+    case "欠席":
+      return { backgroundColor: "#FFEAEA", borderColor: "#FFD1D1" }; // 薄い赤
+    case "早退":
+    case "遅刻":
+      return { backgroundColor: "#FFF7DB", borderColor: "#F2E5A8" }; // 薄い黄
+    default:
+      return { backgroundColor: "#fff", borderColor: "#ddd" };
+  }
+}
+
 const pad2 = (n) => String(n).padStart(2, "0");
 const formatEventLine = (evt) =>
   `${evt.month}/${pad2(evt.day)}(${evt.weekday}) ${evt.name || ""}`;
@@ -151,7 +195,7 @@ export default function App() {
   const [view, setView] = useState("top"); // "top" | "detail"
   const [selectedEventId, setSelectedEventId] = useState(null);
 
-  // イベント一覧（※複合 orderBy。where を付けてないのでインデックス不要）
+  // イベント一覧（複合インデックス: month ASC, day ASC）
   const [events, setEvents] = useState([]);
   useEffect(() => {
     const q = query(
@@ -203,31 +247,33 @@ export default function App() {
 
   return (
     <div style={styles.app}>
-      <div style={styles.wrap}>
-        {view === "top" && (
-          <TopPage
-            events={events}
-            players={players}
-            onDeleteEvent={async (id) => {
-              if (!window.confirm("このイベントを削除しますか？")) return;
-              try {
-                await deleteDoc(doc(db, "events", id));
-              } catch (e) {
-                console.error("delete event error:", e);
-                alert("イベント削除に失敗しました。\n" + e.message);
-              }
-            }}
-            onOpenDetail={goDetail}
-          />
-        )}
+      <div style={styles.shell}>
+        <div style={styles.card}>
+          {view === "top" && (
+            <TopPage
+              events={events}
+              players={players}
+              onDeleteEvent={async (id) => {
+                if (!window.confirm("このイベントを削除しますか？")) return;
+                try {
+                  await deleteDoc(doc(db, "events", id));
+                } catch (e) {
+                  console.error("delete event error:", e);
+                  alert("イベント削除に失敗しました。\n" + e.message);
+                }
+              }}
+              onOpenDetail={goDetail}
+            />
+          )}
 
-        {view === "detail" && selectedEventId && (
-          <DetailPage
-            eventId={selectedEventId}
-            players={players}
-            onBack={backTop}
-          />
-        )}
+          {view === "detail" && selectedEventId && (
+            <DetailPage
+              eventId={selectedEventId}
+              players={players}
+              onBack={backTop}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -264,7 +310,6 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
         noteMemo: "",
         createdAt: Date.now(),
       });
-      // 入力リセット
       setMonth("");
       setDay("");
       setWeekday("");
@@ -307,6 +352,7 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
     }
   }
 
+  // 男女配列
   const boys = players.filter((p) => p.gender === "男子");
   const girls = players.filter((p) => p.gender === "女子");
 
@@ -410,6 +456,10 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
 
       {/* 選手登録 */}
       <h2 style={styles.h2}>選手登録</h2>
+      {/* ⑦ 男女別合計を見出し直下にも表示 */}
+      <div style={{ fontSize: 14, marginBottom: 8 }}>
+        登録合計：<b>男子 {boys.length}名</b> / <b>女子 {girls.length}名</b>
+      </div>
       <div style={{ display: "grid", gap: 8 }}>
         <input
           style={styles.input}
@@ -522,11 +572,11 @@ function DetailPage({ eventId, players, onBack }) {
     return () => unsub();
   }, [eventId]);
 
-  // 入力コントロール
+  // 入力コントロール（④ もちもの → 詳細 の順で表示）
   const [place, setPlace] = useState("");
   const [meetTime, setMeetTime] = useState("");
-  const [detail, setDetail] = useState("");
-  const [items, setItems] = useState("");
+  const [items, setItems] = useState("");    // もちもの
+  const [detail, setDetail] = useState("");  // 詳細
   const [coachMemo, setCoachMemo] = useState("");
   const [escortMemo, setEscortMemo] = useState("");
   const [carMemo, setCarMemo] = useState("");
@@ -536,14 +586,15 @@ function DetailPage({ eventId, players, onBack }) {
     if (!eventData) return;
     setPlace(eventData.place || "");
     setMeetTime(eventData.meetTime || "");
-    setDetail(eventData.detail || "");
     setItems(eventData.items || "");
+    setDetail(eventData.detail || "");
     setCoachMemo(eventData.coachMemo || "");
     setEscortMemo(eventData.escortMemo || "");
     setCarMemo(eventData.carMemo || "");
     setNoteMemo(eventData.noteMemo || "");
   }, [eventData]);
 
+  // 並び
   const boys = useMemo(
     () => sortPlayersForList(players.filter((p) => p.gender === "男子")),
     [players]
@@ -553,20 +604,24 @@ function DetailPage({ eventId, players, onBack }) {
     [players]
   );
 
-  const boysPresent = useMemo(
-    () =>
-      Object.values(attendMap).filter(
-        (v) => v.gender === "男子" && v.status === "出席"
-      ).length,
-    [attendMap]
-  );
-  const girlsPresent = useMemo(
-    () =>
-      Object.values(attendMap).filter(
-        (v) => v.gender === "女子" && v.status === "出席"
-      ).length,
-    [attendMap]
-  );
+  // ② 出席者の合計と名前一覧
+  const boysPresentNames = useMemo(() => {
+    const list = [];
+    for (const p of boys) {
+      const st = attendMap[p.id]?.status || "未回答";
+      if (st === "出席") list.push(p.name || attendMap[p.id]?.name || "");
+    }
+    return list;
+  }, [boys, attendMap]);
+
+  const girlsPresentNames = useMemo(() => {
+    const list = [];
+    for (const p of girls) {
+      const st = attendMap[p.id]?.status || "未回答";
+      if (st === "出席") list.push(p.name || attendMap[p.id]?.name || "");
+    }
+    return list;
+  }, [girls, attendMap]);
 
   function updateLocalAttendance(player, status) {
     setAttendMap((prev) => ({
@@ -593,12 +648,10 @@ function DetailPage({ eventId, players, onBack }) {
         noteMemo,
         updatedAt: Date.now(),
       });
-
       const writes = Object.entries(attendMap).map(([pid, v]) =>
         setDoc(doc(db, "events", eventId, "attendance", pid), v, { merge: true })
       );
       await Promise.all(writes);
-
       alert("登録しました");
     } catch (e) {
       console.error("saveAll error:", e);
@@ -633,25 +686,36 @@ function DetailPage({ eventId, players, onBack }) {
           value={meetTime}
           onChange={(e) => setMeetTime(e.target.value)}
         />
+
+        {/* ④ 順序：もちもの → 詳細 */}
         <textarea
-          style={{ ...styles.input, minHeight: 80 }}
-          placeholder="詳細"
-          value={detail}
-          onChange={(e) => setDetail(e.target.value)}
-        />
-        <textarea
-          style={{ ...styles.input, minHeight: 80 }}
+          style={styles.textarea}
           placeholder="もちもの"
           value={items}
           onChange={(e) => setItems(e.target.value)}
+        />
+        <textarea
+          style={styles.textarea}
+          placeholder="詳細"
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
         />
       </div>
 
       <hr style={styles.hr} />
 
       <h2 style={styles.h2}>選手出欠管理</h2>
-      <div style={{ fontSize: 14, marginBottom: 8 }}>
-        出席合計：<b>男子 {boysPresent}名</b> / <b>女子 {girlsPresent}名</b>
+
+      {/* ② 合計と名前一覧を男女別に表示 */}
+      <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
+        <div>
+          <b>男子 {boysPresentNames.length}名：</b>
+          {boysPresentNames.length ? boysPresentNames.join("、") : "—"}
+        </div>
+        <div>
+          <b>女子 {girlsPresentNames.length}名：</b>
+          {girlsPresentNames.length ? girlsPresentNames.join("、") : "—"}
+        </div>
       </div>
 
       {/* 男子 */}
@@ -661,13 +725,14 @@ function DetailPage({ eventId, players, onBack }) {
         </div>
         {boys.map((p) => {
           const current = attendMap[p.id]?.status || "未回答";
+          const colorStyle = statusBg(current); // ③
           return (
             <div key={p.id} style={styles.listItem}>
               <div style={{ fontSize: 16, marginRight: 8 }}>
                 <b>{p.grade}年</b> {p.name}
               </div>
               <select
-                style={styles.select}
+                style={{ ...styles.select, ...colorStyle }}
                 value={current}
                 onChange={(e) => updateLocalAttendance(p, e.target.value)}
               >
@@ -689,13 +754,14 @@ function DetailPage({ eventId, players, onBack }) {
         </div>
         {girls.map((p) => {
           const current = attendMap[p.id]?.status || "未回答";
+          const colorStyle = statusBg(current); // ③
           return (
             <div key={p.id} style={styles.listItem}>
               <div style={{ fontSize: 16, marginRight: 8 }}>
                 <b>{p.grade}年</b> {p.name}
               </div>
               <select
-                style={styles.select}
+                style={{ ...styles.select, ...colorStyle }}
                 value={current}
                 onChange={(e) => updateLocalAttendance(p, e.target.value)}
               >
@@ -714,7 +780,7 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>コーチ出欠</h2>
       <textarea
-        style={{ ...styles.input, minHeight: 80 }}
+        style={{ ...styles.textarea }}
         placeholder="コーチ出欠"
         value={coachMemo}
         onChange={(e) => setCoachMemo(e.target.value)}
@@ -722,7 +788,7 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>引率</h2>
       <textarea
-        style={{ ...styles.input, minHeight: 80 }}
+        style={{ ...styles.textarea }}
         placeholder="引率"
         value={escortMemo}
         onChange={(e) => setEscortMemo(e.target.value)}
@@ -730,7 +796,7 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>配車</h2>
       <textarea
-        style={{ ...styles.input, minHeight: 80 }}
+        style={{ ...styles.textarea }}
         placeholder="配車"
         value={carMemo}
         onChange={(e) => setCarMemo(e.target.value)}
@@ -738,7 +804,7 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>その他補足</h2>
       <textarea
-        style={{ ...styles.input, minHeight: 80 }}
+        style={{ ...styles.textarea }}
         placeholder="その他補足"
         value={noteMemo}
         onChange={(e) => setNoteMemo(e.target.value)}
