@@ -14,7 +14,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 
-/* ===== Firebase 設定 ===== */
+/* ===== Firebase 設定（そのまま使えます） ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyDEpxJ68m7uERr9EnJ3-13ahMhU0DLUWmw",
   authDomain: "eagles-event-appli.firebaseapp.com",
@@ -35,7 +35,7 @@ const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
 const GENDERS = ["男子", "女子"];
 const ATTEND_STATUSES = ["未回答", "出席", "欠席", "早退", "遅刻"];
 
-// Google Fonts
+// Google Fonts を読み込み
 function useNotoSans() {
   useEffect(() => {
     const id = "noto-sans-jp";
@@ -50,53 +50,37 @@ function useNotoSans() {
   }, []);
 }
 
-// 画面幅（PC/スマホ）判定
-function useIsDesktop(breakpoint = 768) {
-  const [isDesktop, setIsDesktop] = useState(
-    typeof window !== "undefined" ? window.innerWidth >= breakpoint : true
-  );
-  useEffect(() => {
-    const onResize = () => setIsDesktop(window.innerWidth >= breakpoint);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [breakpoint]);
-  return isDesktop;
-}
-
-// --------- スタイル ---------
+// --------- スタイル（中央配置＆幅統一） ---------
 const styles = {
   app: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     background: "#f5f7fb",
     color: TEXT,
     minHeight: "100svh",
-    colorScheme: "light",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "flex-start",
-    padding: "32px 16px",
+    colorScheme: "light",          // ダークモード無効
+    display: "grid",
+    placeItems: "start center",    // 横センター / 縦は上（上下32px余白で中央寄せ）
+    padding: 32,
     boxSizing: "border-box",
+    width: "100%",
   },
 
-  // 画面の中央に"カード"を置く外枠
   shellBase: {
-    width: "100%",
-    maxWidth: 400,
-    margin: "0 auto",
+    width: "100%",                 // 余白用ラッパー（幅は常に100%）
   },
 
-  // ページ本体の白いカード
   card: {
-    width: "100%",
-    background: "#fff",
+    width: "min(100%, 400px)",     // スマホ=100%、PC=最大400px
+    background: BG,
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
     padding: "12px 16px 48px",
     boxSizing: "border-box",
     position: "relative",
+    margin: "0 auto",
   },
 
-  // タイポグラフィ（20 / 18 / 16）
+  // タイポ（20 / 18 / 16）
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
   h2: {
     fontSize: 18,
@@ -108,7 +92,7 @@ const styles = {
 
   row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
 
-  // フォーム要素は iOS/Safari でフォントが変わりやすいので"明示"
+  // フォーム要素はフォント/サイズを明示
   input: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
@@ -183,21 +167,6 @@ const styles = {
     cursor: "pointer",
   },
 
-  reloadBtn: {
-    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
-    fontSize: 14,
-    fontWeight: 500,
-    padding: "6px 12px",
-    background: "#fff",
-    color: ACCENT,
-    borderRadius: 8,
-    border: `1px solid ${ACCENT}`,
-    cursor: "pointer",
-    position: "absolute",
-    top: 16,
-    right: 16,
-  },
-
   listItem: {
     display: "flex",
     alignItems: "center",
@@ -251,7 +220,6 @@ function sortPlayersForList(players) {
 // ---------------- App ----------------
 export default function App() {
   useNotoSans();
-  const isDesktop = useIsDesktop();
 
   const [view, setView] = useState("top"); // "top" | "detail"
   const [selectedEventId, setSelectedEventId] = useState(null);
@@ -598,7 +566,6 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
 // ---------------- Detail Page ----------------
 function DetailPage({ eventId, players, onBack }) {
   const [eventData, setEventData] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // イベント購読
   useEffect(() => {
@@ -631,7 +598,7 @@ function DetailPage({ eventId, players, onBack }) {
       }
     );
     return () => unsub();
-  }, [eventId, refreshKey]);
+  }, [eventId]);
 
   // 入力コントロール（「もちもの → 詳細」の順で表示）
   const [place, setPlace] = useState("");
@@ -662,20 +629,21 @@ function DetailPage({ eventId, players, onBack }) {
       [player.id]: {
         status,
         gender: player.gender,
-        grade: String(player.grade),
+        grade: String(player.grade), // "6"
         name: player.name,
       },
     }));
   }
 
-  // 出席集計
+  // 出席集計（attendMap を基準に男女別に合計＋名前）
   const attendanceSummary = useMemo(() => {
     const boys = [];
     const girls = [];
     for (const [pid, v] of Object.entries(attendMap)) {
       if (!v || v.status !== "出席") continue;
-      const name = v.name || players.find((p) => p.id === pid)?.name || "";
-      const gender = v.gender || players.find((p) => p.id === pid)?.gender || "";
+      const backup = players.find((p) => p.id === pid);
+      const name = v.name || backup?.name || "";
+      const gender = v.gender || backup?.gender || "";
       const gradeNum =
         typeof v.grade === "string" ? parseInt(v.grade.replace("年", "")) : v.grade;
       const item = { name, grade: Number(gradeNum) || 0 };
@@ -720,15 +688,6 @@ function DetailPage({ eventId, players, onBack }) {
 
   return (
     <>
-      {/* リロードボタン */}
-      <button
-        style={styles.reloadBtn}
-        onClick={() => setRefreshKey((k) => k + 1)}
-        title="出欠情報を再読み込み"
-      >
-        🔄 更新
-      </button>
-
       <h1 style={styles.h1}>イベント詳細</h1>
 
       <h2 style={styles.h2}>イベント情報</h2>
@@ -753,6 +712,7 @@ function DetailPage({ eventId, players, onBack }) {
           onChange={(e) => setMeetTime(e.target.value)}
         />
 
+        {/* 順序：もちもの → 詳細 */}
         <textarea
           style={styles.textarea}
           placeholder="もちもの"
