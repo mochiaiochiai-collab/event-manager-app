@@ -52,6 +52,27 @@ function useNotoSans() {
 
 // --------- スタイル（中央配置＆幅統一） ---------
 const styles = {
+
+  // styles 内に追加
+summaryBox: {
+  fontSize: 14,
+  lineHeight: 1.6,
+  marginBottom: 8,
+  width: "350px",
+},
+summaryLine: {
+  display: "block",
+  width: "100%",
+  // 日本語でも確実に折返す
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  whiteSpace: "normal",
+},
+summaryLabel: {
+  fontWeight: 700,
+  marginRight: 4,
+},
+
   app: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     background: "#f5f7fb",
@@ -78,6 +99,7 @@ const styles = {
     boxSizing: "border-box",
     position: "relative",
     margin: "0 auto",
+     minWidth:"0",
   },
 
   // タイポ（20 / 18 / 16）
@@ -731,21 +753,30 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>選手出欠管理</h2>
 
-      {/* 男女別 合計＋名前 */}
-      <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
-        <div>
-          <b>男子 {attendanceSummary.boys.count}名：</b>
-          {attendanceSummary.boys.names.length
-            ? attendanceSummary.boys.names.join("、")
-            : "—"}
-        </div>
-        <div>
-          <b>女子 {attendanceSummary.girls.count}名：</b>
-          {attendanceSummary.girls.names.length
-            ? attendanceSummary.girls.names.join("、")
-            : "—"}
-        </div>
-      </div>
+    {/* 男女別 合計＋名前 */}
+<div style={styles.summaryBox}>
+  <div style={styles.summaryLine}>
+    <span style={styles.summaryLabel}>
+      男子 {attendanceSummary.boys.count}名：
+    </span>
+    <span>
+      {attendanceSummary.boys.names.length
+        ? attendanceSummary.boys.names.join("、")
+        : "—"}
+    </span>
+  </div>
+  <div style={styles.summaryLine}>
+    <span style={styles.summaryLabel}>
+      女子 {attendanceSummary.girls.count}名：
+    </span>
+    <span>
+      {attendanceSummary.girls.names.length
+        ? attendanceSummary.girls.names.join("、")
+        : "—"}
+    </span>
+  </div>
+</div>
+
 
       {/* 男子リスト */}
       <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
