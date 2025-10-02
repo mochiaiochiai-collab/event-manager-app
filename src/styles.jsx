@@ -17,7 +17,7 @@ export const styles = {
   },
   card: {
     width: "100%",
-    maxWidth: 800,
+    maxWidth: 400,
     background: BG,
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
@@ -45,7 +45,7 @@ export const styles = {
     color: TEXT,
   },
   textarea: {
-    fontSize: 16,
+    fontSize: 14,
     padding: "10px 12px",
     border: "1px solid #ddd",
     borderRadius: 10,
