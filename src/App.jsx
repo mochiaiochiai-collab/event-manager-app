@@ -52,56 +52,36 @@ function useNotoSans() {
 
 // --------- スタイル（中央配置＆幅統一） ---------
 const styles = {
-
-  // styles 内に追加
-summaryBox: {
-  fontSize: 14,
-  lineHeight: 1.6,
-  marginBottom: 8,
-  width: "350px",
-},
-summaryLine: {
-  display: "block",
-  width: "100%",
-  // 日本語でも確実に折返す
-  overflowWrap: "anywhere",
-  wordBreak: "break-word",
-  whiteSpace: "normal",
-},
-summaryLabel: {
-  fontWeight: 700,
-  marginRight: 4,
-},
-
   app: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     background: "#f5f7fb",
     color: TEXT,
     minHeight: "100svh",
-    colorScheme: "light",          // ダークモード無効
+    colorScheme: "light",
     display: "grid",
-    placeItems: "start center",    // 横センター / 縦は上（上下32px余白で中央寄せ）
-    padding: 32,
+    placeItems: "start center",
+    padding: 16,                 // ← スマホ余白は16pxに（90vwと干渉しないように）
     boxSizing: "border-box",
     width: "100%",
   },
 
-  shellBase: {
-    width: "100%",                 // 余白用ラッパー（幅は常に100%）
-  },
+  shellBase: { width: "100%" },
 
   card: {
-    width: "min(100%, 400px)",     // スマホ=100%、PC=最大400px
+    // スマホ: 90vw、PC: 400px。極端に小さい端末では 280px まで確保
+    width: "clamp(280px, 90vw, 400px)",
+    minWidth: 0,                // ← 子要素の長文で横に広がらない保険
     background: BG,
-    minWidth: 0,
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
     padding: "12px 16px 48px",
     boxSizing: "border-box",
     position: "relative",
     margin: "0 auto",
-     minWidth:"0",
   },
+  /* ほかはそのまま */
+
+
 
   // タイポ（20 / 18 / 16）
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
@@ -606,7 +586,8 @@ function DetailPage({ eventId, players, onBack }) {
 
   // --- 出欠：サーバー値とローカル編集を分離 ---
   const [serverMap, setServerMap] = useState({});
-  const [pendingMap, setPendingMap] = useState({}); // 未保存の変更
+  const [pendingMap, setPendingMap] = useState({});
+  const [attendReady, setAttendReady] = useState(false); // 初回ロード完了フラグ
 
   useEffect(() => {
     const ref = collection(db, "events", eventId, "attendance");
@@ -615,25 +596,23 @@ function DetailPage({ eventId, players, onBack }) {
       (snap) => {
         const map = {};
         snap.forEach((d) => (map[d.id] = d.data()));
-        setServerMap(map); // サーバー値のみ更新
+        setServerMap(map);
+        setAttendReady(true);
       },
       (err) => {
         console.error("attendance onSnapshot error:", err);
         alert("出欠情報の取得に失敗しました。\n" + err.message);
       }
     );
-    // イベント切替時は未保存編集をクリア
-    setPendingMap({});
+    setPendingMap({});       // イベント切替時は未保存をクリア
+    setAttendReady(false);   // 再度ロード待ちに
     return () => unsub();
   }, [eventId]);
 
   // 画面表示はローカル優先でマージ
-  const uiMap = useMemo(
-    () => ({ ...serverMap, ...pendingMap }),
-    [serverMap, pendingMap]
-  );
+  const uiMap = useMemo(() => ({ ...serverMap, ...pendingMap }), [serverMap, pendingMap]);
 
-  // 入力コントロール（「もちもの → 詳細」の順で表示）
+  // 入力コントロール
   const [place, setPlace] = useState("");
   const [meetTime, setMeetTime] = useState("");
   const [items, setItems] = useState("");
@@ -669,23 +648,22 @@ function DetailPage({ eventId, players, onBack }) {
     }));
   }
 
-  // 出席集計（uiMap を基準）
+  // 出席集計：players 基準 + uiMap のステータス
   const attendanceSummary = useMemo(() => {
     const boys = [];
     const girls = [];
-    for (const [pid, v] of Object.entries(uiMap)) {
-      if (!v || v.status !== "出席") continue;
-      const backup = players.find((p) => p.id === pid);
-      const name = v.name || backup?.name || "";
-      const gender = v.gender || backup?.gender || "";
-      const gradeNum =
-        typeof v.grade === "string" ? parseInt(v.grade.replace("年", "")) : v.grade;
-      const item = { name, grade: Number(gradeNum) || 0 };
-      if (gender === "男子") boys.push(item);
-      if (gender === "女子") girls.push(item);
-    }
     const sortFn = (a, b) =>
-      b.grade - a.grade || (a.name || "").localeCompare(b.name || "");
+      (b.grade || 0) - (a.grade || 0) ||
+      (a.name || "").localeCompare(b.name || "");
+
+    players.forEach((p) => {
+      const s = uiMap[p.id]?.status || "未回答";
+      if (s !== "出席") return;
+      const item = { name: p.name, grade: Number(p.grade) || 0 };
+      if (p.gender === "男子") boys.push(item);
+      if (p.gender === "女子") girls.push(item);
+    });
+
     boys.sort(sortFn);
     girls.sort(sortFn);
     return {
@@ -697,22 +675,14 @@ function DetailPage({ eventId, players, onBack }) {
   async function saveAll() {
     try {
       await updateDoc(doc(db, "events", eventId), {
-        place,
-        meetTime,
-        detail,
-        items,
-        coachMemo,
-        escortMemo,
-        carMemo,
-        noteMemo,
+        place, meetTime, detail, items, coachMemo, escortMemo, carMemo, noteMemo,
         updatedAt: Date.now(),
       });
-      // 変更された分だけ書き込み
       const writes = Object.entries(pendingMap).map(([pid, v]) =>
         setDoc(doc(db, "events", eventId, "attendance", pid), v, { merge: true })
       );
       await Promise.all(writes);
-      setPendingMap({}); // クリア（以後は serverMap が新値を持ってくる）
+      setPendingMap({});
       alert("登録しました");
     } catch (e) {
       console.error("saveAll error:", e);
@@ -722,7 +692,6 @@ function DetailPage({ eventId, players, onBack }) {
 
   if (!eventData) return null;
 
-  // 現在値の取り出しは uiMap から
   const currentStatus = (p) => uiMap[p.id]?.status || "未回答";
 
   return (
@@ -733,72 +702,43 @@ function DetailPage({ eventId, players, onBack }) {
       <div style={{ display: "grid", gap: 8 }}>
         <div style={{ fontSize: 16 }}>
           <b>
-            {eventData.month}/{String(eventData.day).padStart(2, "0")}(
-            {eventData.weekday})
+            {eventData.month}/{String(eventData.day).padStart(2, "0")}({eventData.weekday})
           </b>{" "}
           {eventData.name}
         </div>
 
-        <input
-          style={styles.input}
-          placeholder="場所"
-          value={place}
-          onChange={(e) => setPlace(e.target.value)}
-        />
-        <input
-          style={styles.input}
-          placeholder="集合時間"
-          value={meetTime}
-          onChange={(e) => setMeetTime(e.target.value)}
-        />
-
-        {/* 順序：もちもの → 詳細 */}
-        <textarea
-          style={styles.textarea}
-          placeholder="もちもの"
-          value={items}
-          onChange={(e) => setItems(e.target.value)}
-        />
-        <textarea
-          style={styles.textarea}
-          placeholder="詳細"
-          value={detail}
-          onChange={(e) => setDetail(e.target.value)}
-        />
+        <input style={styles.input} placeholder="場所" value={place} onChange={(e) => setPlace(e.target.value)} />
+        <input style={styles.input} placeholder="集合時間" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} />
+        <textarea style={styles.textarea} placeholder="もちもの" value={items} onChange={(e) => setItems(e.target.value)} />
+        <textarea style={styles.textarea} placeholder="詳細" value={detail} onChange={(e) => setDetail(e.target.value)} />
       </div>
 
       <hr style={styles.hr} />
 
       <h2 style={styles.h2}>選手出欠管理</h2>
 
-      {/* 男女別 合計＋名前（長文でも必ず折返し） */}
+      {/* 男女別 合計＋名前（ロード完了前は読み込み表示） */}
       <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6, width: "100%" }}>
         <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
           <b>男子 {attendanceSummary.boys.count}名：</b>
-          {attendanceSummary.boys.names.length
-            ? attendanceSummary.boys.names.join("、")
-            : "—"}
+          {attendReady
+            ? (attendanceSummary.boys.names.length ? attendanceSummary.boys.names.join("、") : "—")
+            : "読み込み中…"}
         </div>
         <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
           <b>女子 {attendanceSummary.girls.count}名：</b>
-          {attendanceSummary.girls.names.length
-            ? attendanceSummary.girls.names.join("、")
-            : "—"}
+          {attendReady
+            ? (attendanceSummary.girls.names.length ? attendanceSummary.girls.names.join("、") : "—")
+            : "読み込み中…"}
         </div>
       </div>
 
       {/* 男子リスト */}
       <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-        <div>
-          <span style={styles.pill}>男子</span>
-        </div>
+        <div><span style={styles.pill}>男子</span></div>
         {players
           .filter((p) => p.gender === "男子")
-          .sort(
-            (a, b) =>
-              parseInt(b.grade) - parseInt(a.grade) ||
-              (a.name || "").localeCompare(b.name || "")
-          )
+          .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
           .map((p) => {
             const cur = currentStatus(p);
             const colorStyle = statusBg(cur);
@@ -812,11 +752,7 @@ function DetailPage({ eventId, players, onBack }) {
                   value={cur}
                   onChange={(e) => updateLocalAttendance(p, e.target.value)}
                 >
-                  {ATTEND_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  {ATTEND_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             );
@@ -825,16 +761,10 @@ function DetailPage({ eventId, players, onBack }) {
 
       {/* 女子リスト */}
       <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-        <div>
-          <span style={styles.pill}>女子</span>
-        </div>
+        <div><span style={styles.pill}>女子</span></div>
         {players
           .filter((p) => p.gender === "女子")
-          .sort(
-            (a, b) =>
-              parseInt(b.grade) - parseInt(a.grade) ||
-              (a.name || "").localeCompare(b.name || "")
-          )
+          .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
           .map((p) => {
             const cur = currentStatus(p);
             const colorStyle = statusBg(cur);
@@ -848,11 +778,7 @@ function DetailPage({ eventId, players, onBack }) {
                   value={cur}
                   onChange={(e) => updateLocalAttendance(p, e.target.value)}
                 >
-                  {ATTEND_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  {ATTEND_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             );
@@ -862,46 +788,23 @@ function DetailPage({ eventId, players, onBack }) {
       <hr style={styles.hr} />
 
       <h2 style={styles.h2}>コーチ出欠</h2>
-      <textarea
-        style={styles.textarea}
-        placeholder="コーチ出欠"
-        value={coachMemo}
-        onChange={(e) => setCoachMemo(e.target.value)}
-      />
+      <textarea style={styles.textarea} placeholder="コーチ出欠" value={coachMemo} onChange={(e) => setCoachMemo(e.target.value)} />
 
       <h2 style={styles.h2}>引率</h2>
-      <textarea
-        style={styles.textarea}
-        placeholder="引率"
-        value={escortMemo}
-        onChange={(e) => setEscortMemo(e.target.value)}
-      />
+      <textarea style={styles.textarea} placeholder="引率" value={escortMemo} onChange={(e) => setEscortMemo(e.target.value)} />
 
       <h2 style={styles.h2}>配車</h2>
-      <textarea
-        style={styles.textarea}
-        placeholder="配車"
-        value={carMemo}
-        onChange={(e) => setCarMemo(e.target.value)}
-      />
+      <textarea style={styles.textarea} placeholder="配車" value={carMemo} onChange={(e) => setCarMemo(e.target.value)} />
 
       <h2 style={styles.h2}>その他補足</h2>
-      <textarea
-        style={styles.textarea}
-        placeholder="その他補足"
-        value={noteMemo}
-        onChange={(e) => setNoteMemo(e.target.value)}
-      />
+      <textarea style={styles.textarea} placeholder="その他補足" value={noteMemo} onChange={(e) => setNoteMemo(e.target.value)} />
 
       <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
-        <button style={styles.btn} onClick={saveAll}>
-          登録
-        </button>
-        <button style={styles.btnOutline} onClick={onBack}>
-          トップページにもどる
-        </button>
+        <button style={styles.btn} onClick={saveAll}>登録</button>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
       </div>
     </>
   );
 }
+
 
