@@ -386,7 +386,7 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
 
   return (
     <>
-      <h1 style={styles.h1}>イベント管理App</h1>
+      <h1 style={styles.h1}>🏀イベント管理App</h1>
 
       {/* イベント登録 */}
       <h2 style={styles.h2}>イベント登録</h2>
@@ -687,8 +687,8 @@ function DetailPage({ eventId, players, onBack }) {
   if (!eventData) return null;
 
   return (
-    <>
-      <h1 style={styles.h1}>イベント詳細</h1>
+    <><h1 style={styles.h1}>🏀イベント詳細</h1>
+      
 
       <h2 style={styles.h2}>イベント情報</h2>
       <div style={{ display: "grid", gap: 8 }}>
