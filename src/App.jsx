@@ -70,25 +70,33 @@ const styles = {
     background: "#f5f7fb",
     color: TEXT,
     minHeight: "100svh",
-    colorScheme: "light", // ダークモード無効
-  },
-  shellBase: {
-    minHeight: "100svh",
+    colorScheme: "light",
     display: "flex",
-    justifyContent: "center", // 横センター
-    padding: 32,              // スマホ/PC 共通で左右上下 32px 余白
+    justifyContent: "center",
+    alignItems: "flex-start",
+    padding: "32px 16px",
     boxSizing: "border-box",
   },
+
+  // 画面の中央に"カード"を置く外枠
+  shellBase: {
+    width: "100%",
+    maxWidth: 400,
+    margin: "0 auto",
+  },
+
+  // ページ本体の白いカード
   card: {
     width: "100%",
-    maxWidth: 400,        // PCはカード幅400px（スマホは幅いっぱい-余白）
-    background: BG,
+    background: "#fff",
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
     padding: "12px 16px 48px",
     boxSizing: "border-box",
-    margin: "0 auto",
+    position: "relative",
   },
+
+  // タイポグラフィ（20 / 18 / 16）
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
   h2: {
     fontSize: 18,
@@ -97,9 +105,15 @@ const styles = {
     borderLeft: `4px solid ${ACCENT}`,
     paddingLeft: 8,
   },
+
   row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
+
+  // フォーム要素は iOS/Safari でフォントが変わりやすいので"明示"
   input: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
+    fontWeight: 500,
+    lineHeight: 1.6,
     padding: "10px 12px",
     border: "1px solid #ddd",
     borderRadius: 10,
@@ -111,7 +125,10 @@ const styles = {
     color: TEXT,
   },
   textarea: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
+    fontWeight: 500,
+    lineHeight: 1.6,
     padding: "10px 12px",
     border: "1px solid #ddd",
     borderRadius: 10,
@@ -121,11 +138,14 @@ const styles = {
     boxSizing: "border-box",
     background: "#fff",
     color: TEXT,
-    minHeight: 80,
+    minHeight: 160,
     resize: "vertical",
   },
   select: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
+    fontWeight: 500,
+    lineHeight: 1.6,
     padding: "10px 12px",
     border: "1px solid #ddd",
     borderRadius: 10,
@@ -137,7 +157,9 @@ const styles = {
     WebkitAppearance: "none",
     MozAppearance: "none",
   },
+
   btn: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
     fontWeight: 500,
     padding: "12px 14px",
@@ -146,8 +168,10 @@ const styles = {
     borderRadius: 12,
     border: 0,
     width: "100%",
+    cursor: "pointer",
   },
   btnOutline: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
     fontWeight: 500,
     padding: "12px 14px",
@@ -156,7 +180,24 @@ const styles = {
     borderRadius: 12,
     border: `1px solid ${ACCENT}`,
     width: "100%",
+    cursor: "pointer",
   },
+
+  reloadBtn: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+    fontSize: 14,
+    fontWeight: 500,
+    padding: "6px 12px",
+    background: "#fff",
+    color: ACCENT,
+    borderRadius: 8,
+    border: `1px solid ${ACCENT}`,
+    cursor: "pointer",
+    position: "absolute",
+    top: 16,
+    right: 16,
+  },
+
   listItem: {
     display: "flex",
     alignItems: "center",
@@ -167,6 +208,7 @@ const styles = {
     borderRadius: 12,
     background: "#fff",
   },
+
   hr: { height: 1, background: "#eee", border: 0, margin: "16px 0" },
   pill: {
     display: "inline-block",
@@ -210,11 +252,6 @@ function sortPlayersForList(players) {
 export default function App() {
   useNotoSans();
   const isDesktop = useIsDesktop();
-
-  const shellStyle = {
-    ...styles.shellBase,
-    alignItems: isDesktop ? "center" : "flex-start", // PC:縦横センター / スマホ:上から32px
-  };
 
   const [view, setView] = useState("top"); // "top" | "detail"
   const [selectedEventId, setSelectedEventId] = useState(null);
@@ -271,7 +308,7 @@ export default function App() {
 
   return (
     <div style={styles.app}>
-      <div style={shellStyle}>
+      <div style={styles.shellBase}>
         <div style={styles.card}>
           {view === "top" && (
             <TopPage
@@ -282,7 +319,7 @@ export default function App() {
                 try {
                   await deleteDoc(doc(db, "events", id));
                 } catch (e) {
-                  console.error("delete event error:", e);
+                  console.error(e);
                   alert("イベント削除に失敗しました。\n" + e.message);
                 }
               }}
@@ -460,6 +497,7 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
                 fontSize: 16,
                 fontWeight: 500,
                 flex: 1,
+                cursor: "pointer",
               }}
               title="詳細を開く"
             >
@@ -560,6 +598,7 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
 // ---------------- Detail Page ----------------
 function DetailPage({ eventId, players, onBack }) {
   const [eventData, setEventData] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // イベント購読
   useEffect(() => {
@@ -592,13 +631,13 @@ function DetailPage({ eventId, players, onBack }) {
       }
     );
     return () => unsub();
-  }, [eventId]);
+  }, [eventId, refreshKey]);
 
   // 入力コントロール（「もちもの → 詳細」の順で表示）
   const [place, setPlace] = useState("");
   const [meetTime, setMeetTime] = useState("");
-  const [items, setItems] = useState("");    // もちもの
-  const [detail, setDetail] = useState("");  // 詳細
+  const [items, setItems] = useState("");
+  const [detail, setDetail] = useState("");
   const [coachMemo, setCoachMemo] = useState("");
   const [escortMemo, setEscortMemo] = useState("");
   const [carMemo, setCarMemo] = useState("");
@@ -623,32 +662,28 @@ function DetailPage({ eventId, players, onBack }) {
       [player.id]: {
         status,
         gender: player.gender,
-        // 集計で並び替えに使うため数値化しやすい形で持つ
-        grade: String(player.grade), // "6"
+        grade: String(player.grade),
         name: player.name,
       },
     }));
   }
 
-  // ーーー 出席集計（公開でも確実に出るよう attendMap だけで集計）ーーー
+  // 出席集計
   const attendanceSummary = useMemo(() => {
     const boys = [];
     const girls = [];
     for (const [pid, v] of Object.entries(attendMap)) {
       if (!v || v.status !== "出席") continue;
-      const name =
-        v.name ||
-        players.find((p) => p.id === pid)?.name ||
-        ""; // 念のため players から補完
-      const gender =
-        v.gender || players.find((p) => p.id === pid)?.gender || "";
+      const name = v.name || players.find((p) => p.id === pid)?.name || "";
+      const gender = v.gender || players.find((p) => p.id === pid)?.gender || "";
       const gradeNum =
         typeof v.grade === "string" ? parseInt(v.grade.replace("年", "")) : v.grade;
       const item = { name, grade: Number(gradeNum) || 0 };
       if (gender === "男子") boys.push(item);
       if (gender === "女子") girls.push(item);
     }
-    const sortFn = (a, b) => (b.grade - a.grade) || (a.name || "").localeCompare(b.name || "");
+    const sortFn = (a, b) =>
+      b.grade - a.grade || (a.name || "").localeCompare(b.name || "");
     boys.sort(sortFn);
     girls.sort(sortFn);
     return {
@@ -685,6 +720,15 @@ function DetailPage({ eventId, players, onBack }) {
 
   return (
     <>
+      {/* リロードボタン */}
+      <button
+        style={styles.reloadBtn}
+        onClick={() => setRefreshKey((k) => k + 1)}
+        title="出欠情報を再読み込み"
+      >
+        🔄 更新
+      </button>
+
       <h1 style={styles.h1}>イベント詳細</h1>
 
       <h2 style={styles.h2}>イベント情報</h2>
@@ -709,7 +753,6 @@ function DetailPage({ eventId, players, onBack }) {
           onChange={(e) => setMeetTime(e.target.value)}
         />
 
-        {/* 順序：もちもの → 詳細 */}
         <textarea
           style={styles.textarea}
           placeholder="もちもの"
@@ -746,10 +789,16 @@ function DetailPage({ eventId, players, onBack }) {
 
       {/* 男子リスト */}
       <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-        <div><span style={styles.pill}>男子</span></div>
+        <div>
+          <span style={styles.pill}>男子</span>
+        </div>
         {players
           .filter((p) => p.gender === "男子")
-          .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
+          .sort(
+            (a, b) =>
+              parseInt(b.grade) - parseInt(a.grade) ||
+              (a.name || "").localeCompare(b.name || "")
+          )
           .map((p) => {
             const current = attendMap[p.id]?.status || "未回答";
             const colorStyle = statusBg(current);
@@ -776,10 +825,16 @@ function DetailPage({ eventId, players, onBack }) {
 
       {/* 女子リスト */}
       <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-        <div><span style={styles.pill}>女子</span></div>
+        <div>
+          <span style={styles.pill}>女子</span>
+        </div>
         {players
           .filter((p) => p.gender === "女子")
-          .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
+          .sort(
+            (a, b) =>
+              parseInt(b.grade) - parseInt(a.grade) ||
+              (a.name || "").localeCompare(b.name || "")
+          )
           .map((p) => {
             const current = attendMap[p.id]?.status || "未回答";
             const colorStyle = statusBg(current);
@@ -839,8 +894,12 @@ function DetailPage({ eventId, players, onBack }) {
       />
 
       <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
-        <button style={styles.btn} onClick={saveAll}>登録</button>
-        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+        <button style={styles.btn} onClick={saveAll}>
+          登録
+        </button>
+        <button style={styles.btnOutline} onClick={onBack}>
+          トップページにもどる
+        </button>
       </div>
     </>
   );
