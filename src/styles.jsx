@@ -18,6 +18,7 @@ export const styles = {
   card: {
     width: "100%",
     maxWidth: 800,
+    
     background: BG,
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
