@@ -827,6 +827,10 @@ function DetailPage({ eventId, players, onBack }) {
           onChange={(e) => setDetail(e.target.value)}
         />
       </div>
+            <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        <button style={styles.btn} onClick={saveAll}>登録</button>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+      </div>
 
       <hr style={styles.hr} />
 
