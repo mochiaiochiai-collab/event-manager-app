@@ -60,7 +60,7 @@ const styles = {
     colorScheme: "light",
     display: "grid",
     placeItems: "start center",
-    padding: 16,                 // ← スマホ余白は16pxに（90vwと干渉しないように）
+    padding: 16,
     boxSizing: "border-box",
     width: "100%",
   },
@@ -68,9 +68,8 @@ const styles = {
   shellBase: { width: "100%" },
 
   card: {
-    // スマホ: 90vw、PC: 400px。極端に小さい端末では 280px まで確保
     width: "clamp(280px, 90vw, 400px)",
-    minWidth: 0,                // ← 子要素の長文で横に広がらない保険
+    minWidth: 0,
     background: BG,
     borderRadius: 16,
     boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
@@ -79,9 +78,6 @@ const styles = {
     position: "relative",
     margin: "0 auto",
   },
-  /* ほかはそのまま */
-
-
 
   // タイポ（20 / 18 / 16）
   h1: { fontSize: 20, fontWeight: 700, margin: "4px 0 12px" },
@@ -95,7 +91,6 @@ const styles = {
 
   row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
 
-  // フォーム要素はフォント/サイズを明示
   input: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     fontSize: 16,
@@ -387,6 +382,18 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
   const boys = players.filter((p) => p.gender === "男子");
   const girls = players.filter((p) => p.gender === "女子");
 
+  // 追加: 選手削除
+  async function deletePlayer(id) {
+    if (!window.confirm("この選手の登録を削除しますか？")) return;
+    try {
+      await deleteDoc(doc(db, "players", id));
+      // ※出欠サブコレクションはそのまま（必要になったら物理削除のロジックを追加）
+    } catch (e) {
+      console.error("delete player error:", e);
+      alert("選手の削除に失敗しました。\n" + e.message);
+    }
+  }
+
   return (
     <>
       <h1 style={styles.h1}>🏀Eaglesイベント管理App</h1>
@@ -534,7 +541,7 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
 
       <hr style={styles.hr} />
 
-      {/* 選手一覧 */}
+      {/* 選手一覧（削除ボタン付き） */}
       <h2 style={styles.h2}>選手一覧</h2>
 
       <div style={{ display: "grid", gap: 4, marginBottom: 12 }}>
@@ -546,6 +553,13 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
             <div style={{ fontSize: 16 }}>
               <b>{p.grade}年</b> {p.name}
             </div>
+            <button
+              onClick={() => deletePlayer(p.id)}
+              style={{ ...styles.btnOutline, width: "auto", padding: "6px 10px" }}
+              title="この選手を削除"
+            >
+              削除
+            </button>
           </div>
         ))}
       </div>
@@ -559,6 +573,13 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
             <div style={{ fontSize: 16 }}>
               <b>{p.grade}年</b> {p.name}
             </div>
+            <button
+              onClick={() => deletePlayer(p.id)}
+              style={{ ...styles.btnOutline, width: "auto", padding: "6px 10px" }}
+              title="この選手を削除"
+            >
+              削除
+            </button>
           </div>
         ))}
       </div>
@@ -604,8 +625,8 @@ function DetailPage({ eventId, players, onBack }) {
         alert("出欠情報の取得に失敗しました。\n" + err.message);
       }
     );
-    setPendingMap({});       // イベント切替時は未保存をクリア
-    setAttendReady(false);   // 再度ロード待ちに
+    setPendingMap({});
+    setAttendReady(false);
     return () => unsub();
   }, [eventId]);
 
@@ -622,6 +643,12 @@ function DetailPage({ eventId, players, onBack }) {
   const [carMemo, setCarMemo] = useState("");
   const [noteMemo, setNoteMemo] = useState("");
 
+  // 追加：イベント基本情報を編集可能に
+  const [eMonth, setEMonth] = useState("");
+  const [eDay, setEDay] = useState("");
+  const [eWeekday, setEWeekday] = useState("");
+  const [eName, setEName] = useState("");
+
   useEffect(() => {
     if (!eventData) return;
     setPlace(eventData.place || "");
@@ -632,6 +659,12 @@ function DetailPage({ eventId, players, onBack }) {
     setEscortMemo(eventData.escortMemo || "");
     setCarMemo(eventData.carMemo || "");
     setNoteMemo(eventData.noteMemo || "");
+
+    // 基本情報
+    setEMonth(String(eventData.month || ""));
+    setEDay(String(eventData.day || ""));
+    setEWeekday(eventData.weekday || "");
+    setEName(eventData.name || "");
   }, [eventData]);
 
   // セレクト変更：未保存編集に積む（UI即時反映）
@@ -648,7 +681,7 @@ function DetailPage({ eventId, players, onBack }) {
     }));
   }
 
-  // 出席集計：players 基準 + uiMap のステータス
+  // 出席集計
   const attendanceSummary = useMemo(() => {
     const boys = [];
     const girls = [];
@@ -673,9 +706,34 @@ function DetailPage({ eventId, players, onBack }) {
   }, [uiMap, players]);
 
   async function saveAll() {
+    // 入力チェック（基本情報）
+    if (!eMonth || !eDay || !eWeekday || !eName.trim()) {
+      if (
+        !window.confirm(
+          "日付またはイベント名が未入力です。このまま保存しますか？（未入力のままでも保存はできます）"
+        )
+      ) {
+        return;
+      }
+    }
+
     try {
       await updateDoc(doc(db, "events", eventId), {
-        place, meetTime, detail, items, coachMemo, escortMemo, carMemo, noteMemo,
+        // 基本情報も保存
+        month: eMonth ? Number(eMonth) : null,
+        day: eDay ? Number(eDay) : null,
+        weekday: eWeekday || "",
+        name: eName.trim(),
+
+        // 付随情報
+        place,
+        meetTime,
+        detail,
+        items,
+        coachMemo,
+        escortMemo,
+        carMemo,
+        noteMemo,
         updatedAt: Date.now(),
       });
       const writes = Object.entries(pendingMap).map(([pid, v]) =>
@@ -700,17 +758,74 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>イベント情報</h2>
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ fontSize: 16 }}>
-          <b>
-            {eventData.month}/{String(eventData.day).padStart(2, "0")}({eventData.weekday})
-          </b>{" "}
-          {eventData.name}
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={styles.row}>
+            <select
+              style={{ ...styles.select, flex: 1 }}
+              value={eMonth}
+              onChange={(e) => setEMonth(e.target.value)}
+            >
+              <option value="">月</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>{m}月</option>
+              ))}
+            </select>
+
+            <select
+              style={{ ...styles.select, flex: 1 }}
+              value={eDay}
+              onChange={(e) => setEDay(e.target.value)}
+            >
+              <option value="">日</option>
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>{d}日</option>
+              ))}
+            </select>
+
+            <select
+              style={{ ...styles.select, flex: 1 }}
+              value={eWeekday}
+              onChange={(e) => setEWeekday(e.target.value)}
+            >
+              <option value="">曜日</option>
+              {WEEKDAYS.map((w) => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
+          </div>
+
+          <input
+            style={styles.input}
+            placeholder="イベント名"
+            value={eName}
+            onChange={(e) => setEName(e.target.value)}
+          />
         </div>
 
-        <input style={styles.input} placeholder="場所" value={place} onChange={(e) => setPlace(e.target.value)} />
-        <input style={styles.input} placeholder="集合時間" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} />
-        <textarea style={styles.textarea} placeholder="もちもの" value={items} onChange={(e) => setItems(e.target.value)} />
-        <textarea style={styles.textarea} placeholder="詳細" value={detail} onChange={(e) => setDetail(e.target.value)} />
+        <input
+          style={styles.input}
+          placeholder="場所"
+          value={place}
+          onChange={(e) => setPlace(e.target.value)}
+        />
+        <input
+          style={styles.input}
+          placeholder="集合時間"
+          value={meetTime}
+          onChange={(e) => setMeetTime(e.target.value)}
+        />
+        <textarea
+          style={styles.textarea}
+          placeholder="もちもの"
+          value={items}
+          onChange={(e) => setItems(e.target.value)}
+        />
+        <textarea
+          style={styles.textarea}
+          placeholder="詳細"
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+        />
       </div>
 
       <hr style={styles.hr} />
@@ -788,16 +903,36 @@ function DetailPage({ eventId, players, onBack }) {
       <hr style={styles.hr} />
 
       <h2 style={styles.h2}>コーチ出欠</h2>
-      <textarea style={styles.textarea} placeholder="コーチ出欠" value={coachMemo} onChange={(e) => setCoachMemo(e.target.value)} />
+      <textarea
+        style={styles.textarea}
+        placeholder="コーチ出欠"
+        value={coachMemo}
+        onChange={(e) => setCoachMemo(e.target.value)}
+      />
 
       <h2 style={styles.h2}>引率</h2>
-      <textarea style={styles.textarea} placeholder="引率" value={escortMemo} onChange={(e) => setEscortMemo(e.target.value)} />
+      <textarea
+        style={styles.textarea}
+        placeholder="引率"
+        value={escortMemo}
+        onChange={(e) => setEscortMemo(e.target.value)}
+      />
 
       <h2 style={styles.h2}>配車</h2>
-      <textarea style={styles.textarea} placeholder="配車" value={carMemo} onChange={(e) => setCarMemo(e.target.value)} />
+      <textarea
+        style={styles.textarea}
+        placeholder="配車"
+        value={carMemo}
+        onChange={(e) => setCarMemo(e.target.value)}
+      />
 
       <h2 style={styles.h2}>その他補足</h2>
-      <textarea style={styles.textarea} placeholder="その他補足" value={noteMemo} onChange={(e) => setNoteMemo(e.target.value)} />
+      <textarea
+        style={styles.textarea}
+        placeholder="その他補足"
+        value={noteMemo}
+        onChange={(e) => setNoteMemo(e.target.value)}
+      />
 
       <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
         <button style={styles.btn} onClick={saveAll}>登録</button>
@@ -806,5 +941,3 @@ function DetailPage({ eventId, players, onBack }) {
     </>
   );
 }
-
-
