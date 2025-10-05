@@ -33,7 +33,7 @@ const BG = "#ffffff";
 const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
 const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
 const GENDERS = ["男子", "女子"];
-const ATTEND_STATUSES = ["未回答", "出席", "欠席", "早退", "遅刻"];
+const ATTEND_STATUSES = ["未回答", "出席","調整中","欠席", "早退", "遅刻"];
 
 // Google Fonts を読み込み
 function useNotoSans() {
@@ -192,6 +192,8 @@ function statusBg(status) {
   switch (status) {
     case "出席":
       return { backgroundColor: "#E9F2FF", borderColor: "#C9DFFF" };
+    case "調整中":
+      return { backgroundColor: "#F0F4FF", borderColor: "#D6E3FF" };
     case "欠席":
       return { backgroundColor: "#FFEAEA", borderColor: "#FFD1D1" };
     case "早退":
@@ -681,29 +683,47 @@ function DetailPage({ eventId, players, onBack }) {
     }));
   }
 
-  // 出席集計
-  const attendanceSummary = useMemo(() => {
-    const boys = [];
-    const girls = [];
-    const sortFn = (a, b) =>
-      (b.grade || 0) - (a.grade || 0) ||
-      (a.name || "").localeCompare(b.name || "");
+  // 出席・調整中を男女別で集計
+const attendanceSummary = useMemo(() => {
+  const boysPresent = [];
+  const girlsPresent = [];
+  const boysAdjust  = [];
+  const girlsAdjust = [];
 
-    players.forEach((p) => {
-      const s = uiMap[p.id]?.status || "未回答";
-      if (s !== "出席") return;
-      const item = { name: p.name, grade: Number(p.grade) || 0 };
-      if (p.gender === "男子") boys.push(item);
-      if (p.gender === "女子") girls.push(item);
-    });
+  const sortFn = (a, b) =>
+    (b.grade || 0) - (a.grade || 0) ||
+    (a.name || "").localeCompare(b.name || "");
 
-    boys.sort(sortFn);
-    girls.sort(sortFn);
-    return {
-      boys: { count: boys.length, names: boys.map((x) => x.name) },
-      girls: { count: girls.length, names: girls.map((x) => x.name) },
-    };
-  }, [uiMap, players]);
+  players.forEach((p) => {
+    const s = uiMap[p.id]?.status || "未回答";
+    const item = { name: p.name, grade: Number(p.grade) || 0 };
+    if (s === "出席") {
+      if (p.gender === "男子") boysPresent.push(item);
+      if (p.gender === "女子") girlsPresent.push(item);
+    } else if (s === "調整中") {
+      if (p.gender === "男子") boysAdjust.push(item);
+      if (p.gender === "女子") girlsAdjust.push(item);
+    }
+  });
+
+  [boysPresent, girlsPresent, boysAdjust, girlsAdjust].forEach(arr => arr.sort(sortFn));
+
+  return {
+    boys: {
+      presentCount: boysPresent.length,
+      presentNames: boysPresent.map(x => x.name),
+      adjustCount:  boysAdjust.length,
+      adjustNames:  boysAdjust.map(x => x.name),
+    },
+    girls: {
+      presentCount: girlsPresent.length,
+      presentNames: girlsPresent.map(x => x.name),
+      adjustCount:  girlsAdjust.length,
+      adjustNames:  girlsAdjust.map(x => x.name),
+    },
+  };
+}, [uiMap, players]);
+
 
   async function saveAll() {
     // 入力チェック（基本情報）
@@ -801,28 +821,32 @@ function DetailPage({ eventId, players, onBack }) {
             onChange={(e) => setEName(e.target.value)}
           />
         </div>
-
+        
+   <h2 style={styles.h2}>場所</h2>
         <input
           style={styles.input}
           placeholder="場所"
           value={place}
           onChange={(e) => setPlace(e.target.value)}
         />
+         <h2 style={styles.h2}>時間/集合場所/鍵当番 等</h2>
         <input
           style={styles.input}
           placeholder="集合時間"
           value={meetTime}
           onChange={(e) => setMeetTime(e.target.value)}
         />
+                 <h2 style={styles.h2}>もちもの</h2>
         <textarea
           style={styles.textarea}
           placeholder="もちもの"
           value={items}
           onChange={(e) => setItems(e.target.value)}
         />
+                         <h2 style={styles.h2}>自由記入</h2>
         <textarea
           style={styles.textarea}
-          placeholder="詳細"
+          placeholder="自由記入"
           value={detail}
           onChange={(e) => setDetail(e.target.value)}
         />
@@ -836,21 +860,42 @@ function DetailPage({ eventId, players, onBack }) {
 
       <h2 style={styles.h2}>選手出欠管理</h2>
 
-      {/* 男女別 合計＋名前（ロード完了前は読み込み表示） */}
-      <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6, width: "100%" }}>
-        <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
-          <b>男子 {attendanceSummary.boys.count}名：</b>
-          {attendReady
-            ? (attendanceSummary.boys.names.length ? attendanceSummary.boys.names.join("、") : "—")
-            : "読み込み中…"}
-        </div>
-        <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
-          <b>女子 {attendanceSummary.girls.count}名：</b>
-          {attendReady
-            ? (attendanceSummary.girls.names.length ? attendanceSummary.girls.names.join("、") : "—")
-            : "読み込み中…"}
-        </div>
-      </div>
+{/* 合計欄（男子→女子、出席→調整中 の順） */}
+<div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6, width: "100%" }}>
+  {/* 男子 出席 */}
+  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
+    <b>男子 出席 {attendanceSummary.boys.presentCount}名：</b>
+    {attendReady
+      ? (attendanceSummary.boys.presentNames.length ? attendanceSummary.boys.presentNames.join("、") : "—")
+      : "読み込み中…"}
+  </div>
+
+  {/* 男子 調整中 */}
+  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
+    <b>男子 調整中 {attendanceSummary.boys.adjustCount}名：</b>
+    {attendReady
+      ? (attendanceSummary.boys.adjustNames.length ? attendanceSummary.boys.adjustNames.join("、") : "—")
+      : "読み込み中…"}
+  </div>
+
+  {/* 女子 出席 */}
+  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
+    <b>女子 出席 {attendanceSummary.girls.presentCount}名：</b>
+    {attendReady
+      ? (attendanceSummary.girls.presentNames.length ? attendanceSummary.girls.presentNames.join("、") : "—")
+      : "読み込み中…"}
+  </div>
+
+  {/* 女子 調整中 */}
+  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
+    <b>女子 調整中 {attendanceSummary.girls.adjustCount}名：</b>
+    {attendReady
+      ? (attendanceSummary.girls.adjustNames.length ? attendanceSummary.girls.adjustNames.join("、") : "—")
+      : "読み込み中…"}
+  </div>
+</div>
+
+
 
       {/* 男子リスト */}
       <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
