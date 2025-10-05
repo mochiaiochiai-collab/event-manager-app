@@ -193,7 +193,7 @@ function statusBg(status) {
     case "出席":
       return { backgroundColor: "#E9F2FF", borderColor: "#C9DFFF" };
     case "調整中":
-      return { backgroundColor: "#F0F4FF", borderColor: "#D6E3FF" };
+      return { backgroundColor: "#f0fff1ff", borderColor: "#D6E3FF" };
     case "欠席":
       return { backgroundColor: "#FFEAEA", borderColor: "#FFD1D1" };
     case "早退":
