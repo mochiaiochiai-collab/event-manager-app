@@ -970,7 +970,7 @@ const attendanceSummary = useMemo(() => {
         <h2 style={styles.h2}>配車代/担当</h2>
      <input
   style={styles.input}
-  placeholder="ひとり200円/田所ママ"
+  placeholder="配車代/担当"
   value={carCost}
   onChange={(e) => setCarCost(e.target.value)}
 />
