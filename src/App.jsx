@@ -275,7 +275,15 @@ export default function App() {
   };
 
   return (
-    <div style={styles.app}>
+    <div style={styles.app} className="eagles-app">
+      <style>{`
+  .eagles-app input::placeholder,
+  .eagles-app textarea::placeholder {
+    color: #d3dbf2ff;  /* ← プレースホルダーの色 */
+    opacity: 1;      /* ← iPhoneやSafariで薄すぎないように */
+  }
+`}</style>
+
       <div style={styles.shellBase}>
         <div style={styles.card}>
           {view === "top" && (
@@ -951,7 +959,7 @@ const attendanceSummary = useMemo(() => {
          <h2 style={styles.h2}>時間/集合場所/鍵当番 等</h2>
         <input
           style={styles.input}
-          placeholder="集合時間"
+          placeholder="時間/集合場所/鍵当番 等"
           value={meetTime}
           onChange={(e) => setMeetTime(e.target.value)}
         />
@@ -970,25 +978,25 @@ const attendanceSummary = useMemo(() => {
           value={items}
           onChange={(e) => setItems(e.target.value)}
         />
-                         <h2 style={styles.h2}>自由記入</h2>
+                         <h2 style={styles.h2}>服装</h2>
         <textarea
           style={styles.textarea}
-          placeholder="自由記入"
+          placeholder="服装"
           value={detail}
           onChange={(e) => setDetail(e.target.value)}
         />
       </div>
 
 
-      <hr style={styles.hr} />
+      
 
      
 
-      <hr style={styles.hr} />
+      
 
       <h2 style={styles.h2}>コーチ出欠</h2>
       <textarea
-        style={styles.textarea}
+        style={{ ...styles.textarea, minHeight: 80 }}  
         placeholder="コーチ出欠"
         value={coachMemo}
         onChange={(e) => setCoachMemo(e.target.value)}
@@ -996,7 +1004,7 @@ const attendanceSummary = useMemo(() => {
 
       <h2 style={styles.h2}>引率</h2>
       <textarea
-        style={styles.textarea}
+        style={{ ...styles.textarea, minHeight: 80 }}  
         placeholder="引率"
         value={escortMemo}
         onChange={(e) => setEscortMemo(e.target.value)}
@@ -1004,7 +1012,7 @@ const attendanceSummary = useMemo(() => {
 
       <h2 style={styles.h2}>配車</h2>
       <textarea
-        style={styles.textarea}
+        style={{ ...styles.textarea, minHeight: 300 }}  
         placeholder="配車"
         value={carMemo}
         onChange={(e) => setCarMemo(e.target.value)}
@@ -1012,7 +1020,7 @@ const attendanceSummary = useMemo(() => {
 
       <h2 style={styles.h2}>その他補足</h2>
       <textarea
-        style={styles.textarea}
+        style={{ ...styles.textarea, minHeight: 500 }}  
         placeholder="その他補足"
         value={noteMemo}
         onChange={(e) => setNoteMemo(e.target.value)}
