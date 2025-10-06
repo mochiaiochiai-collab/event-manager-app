@@ -647,6 +647,7 @@ function DetailPage({ eventId, players, onBack }) {
   const [openAttendance, setOpenAttendance] = useState(false); // 出欠入力の開閉
   const [place, setPlace] = useState("");
   const [meetTime, setMeetTime] = useState("");
+  const [carCost, setCarCost] = useState(""); // ← 配車代
   const [items, setItems] = useState("");
   const [detail, setDetail] = useState("");
   const [coachMemo, setCoachMemo] = useState("");
@@ -664,6 +665,7 @@ function DetailPage({ eventId, players, onBack }) {
     if (!eventData) return;
     setPlace(eventData.place || "");
     setMeetTime(eventData.meetTime || "");
+    setCarCost(eventData.carCost || ""); // ← 配車代
     setItems(eventData.items || "");
     setDetail(eventData.detail || "");
     setCoachMemo(eventData.coachMemo || "");
@@ -757,6 +759,7 @@ const attendanceSummary = useMemo(() => {
         // 付随情報
         place,
         meetTime,
+        carCost, // ← 配車代
         detail,
         items,
         coachMemo,
@@ -965,12 +968,12 @@ const attendanceSummary = useMemo(() => {
         />
 
         <h2 style={styles.h2}>配車代/担当</h2>
-        <input
-          style={styles.input}
-          placeholder="配車代/担当"
-          value={meetTime}
-          onChange={(e) => setMeetTime(e.target.value)}
-        />
+     <input
+  style={styles.input}
+  placeholder="ひとり200円/田所ママ"
+  value={carCost}
+  onChange={(e) => setCarCost(e.target.value)}
+/>
                  <h2 style={styles.h2}>もちもの</h2>
         <textarea
           style={styles.textarea}
