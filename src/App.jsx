@@ -636,6 +636,7 @@ function DetailPage({ eventId, players, onBack }) {
   const uiMap = useMemo(() => ({ ...serverMap, ...pendingMap }), [serverMap, pendingMap]);
 
   // 入力コントロール
+  const [openAttendance, setOpenAttendance] = useState(false); // 出欠入力の開閉
   const [place, setPlace] = useState("");
   const [meetTime, setMeetTime] = useState("");
   const [items, setItems] = useState("");
@@ -821,42 +822,7 @@ const attendanceSummary = useMemo(() => {
             onChange={(e) => setEName(e.target.value)}
           />
         </div>
-        
-   <h2 style={styles.h2}>場所</h2>
-        <input
-          style={styles.input}
-          placeholder="場所"
-          value={place}
-          onChange={(e) => setPlace(e.target.value)}
-        />
-         <h2 style={styles.h2}>時間/集合場所/鍵当番 等</h2>
-        <input
-          style={styles.input}
-          placeholder="集合時間"
-          value={meetTime}
-          onChange={(e) => setMeetTime(e.target.value)}
-        />
-                 <h2 style={styles.h2}>もちもの</h2>
-        <textarea
-          style={styles.textarea}
-          placeholder="もちもの"
-          value={items}
-          onChange={(e) => setItems(e.target.value)}
-        />
-                         <h2 style={styles.h2}>自由記入</h2>
-        <textarea
-          style={styles.textarea}
-          placeholder="自由記入"
-          value={detail}
-          onChange={(e) => setDetail(e.target.value)}
-        />
-      </div>
-            <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
-        <button style={styles.btn} onClick={saveAll}>登録</button>
-        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
-      </div>
-
-      <hr style={styles.hr} />
+         <hr style={styles.hr} />
 
       <h2 style={styles.h2}>選手出欠管理</h2>
 
@@ -895,6 +861,20 @@ const attendanceSummary = useMemo(() => {
   </div>
 </div>
 
+<div style={{ display: "grid", gap: 8, margin: "8px 0 12px" }}>
+  <button
+    type="button"
+    onClick={() => setOpenAttendance(v => !v)}
+    aria-expanded={openAttendance}
+    style={{ ...styles.btnOutline, width: "auto", padding: "8px 12px" }}
+    title="選手ごとの出欠入力を開閉"
+  >
+    {openAttendance ? "出欠入力 ▼" : "出欠入力 ▶"}
+  </button>
+</div>
+ {/* 出欠入力（トグル展開時のみ表示） */}
+ {openAttendance && (
+   <>
 
 
       {/* 男子リスト */}
@@ -948,6 +928,61 @@ const attendanceSummary = useMemo(() => {
             );
           })}
       </div>
+                  <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        <button style={styles.btn} onClick={saveAll}>登録</button>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+      </div>
+
+
+   </>
+ )}
+
+      <hr style={styles.hr} />
+        
+   <h2 style={styles.h2}>場所</h2>
+        <input
+          style={styles.input}
+          placeholder="場所"
+          value={place}
+          onChange={(e) => setPlace(e.target.value)}
+        />
+
+        
+         <h2 style={styles.h2}>時間/集合場所/鍵当番 等</h2>
+        <input
+          style={styles.input}
+          placeholder="集合時間"
+          value={meetTime}
+          onChange={(e) => setMeetTime(e.target.value)}
+        />
+
+        <h2 style={styles.h2}>配車代/担当</h2>
+        <input
+          style={styles.input}
+          placeholder="配車代/担当"
+          value={meetTime}
+          onChange={(e) => setMeetTime(e.target.value)}
+        />
+                 <h2 style={styles.h2}>もちもの</h2>
+        <textarea
+          style={styles.textarea}
+          placeholder="もちもの"
+          value={items}
+          onChange={(e) => setItems(e.target.value)}
+        />
+                         <h2 style={styles.h2}>自由記入</h2>
+        <textarea
+          style={styles.textarea}
+          placeholder="自由記入"
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+        />
+      </div>
+
+
+      <hr style={styles.hr} />
+
+     
 
       <hr style={styles.hr} />
 
