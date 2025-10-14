@@ -1,4 +1,5 @@
 // src/App.jsx
+
 import React, { useEffect, useMemo, useState } from "react";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
@@ -12,6 +13,8 @@ import {
   setDoc,
   query,
   orderBy,
+  getDocs,       // ← 追加
+  writeBatch,    // ← 追加
 } from "firebase/firestore";
 
 /* ===== Firebase 設定（そのまま使えます） ===== */
@@ -31,6 +34,8 @@ const ACCENT = "#2577ff";
 const TEXT = "#606060";
 const BG = "#ffffff";
 const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
+const THIS_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = [THIS_YEAR, THIS_YEAR + 1, THIS_YEAR + 2];
 const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
 const GENDERS = ["男子", "女子"];
 const ATTEND_STATUSES = ["未回答", "出席","調整中","欠席", "早退", "遅刻"];
@@ -205,8 +210,12 @@ function statusBg(status) {
 }
 
 const pad2 = (n) => String(n).padStart(2, "0");
-const formatEventLine = (evt) =>
-  `${evt.month}/${pad2(evt.day)}(${evt.weekday}) ${evt.name || ""}`;
+const formatEventDate = (evt) => {
+  const y = evt.year;
+  const base = `${pad2(evt.month)}/${pad2(evt.day)}(${evt.weekday || ""})`;
+  return y ? `${y}/${base}` : base;
+};
+
 
 function sortPlayersForList(players) {
   return [...players].sort((a, b) => {
@@ -227,11 +236,12 @@ export default function App() {
   // イベント一覧（複合インデックス: month ASC, day ASC）
   const [events, setEvents] = useState([]);
   useEffect(() => {
-    const q = query(
-      collection(db, "events"),
-      orderBy("month", "asc"),
-      orderBy("day", "asc")
-    );
+const q = query(
+  collection(db, "events"),
+  orderBy("year", "asc"),
+  orderBy("month", "asc"),
+  orderBy("day", "asc")
+);
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -315,10 +325,29 @@ export default function App() {
     </div>
   );
 }
+async function backfillEventYear(defaultYear = new Date().getFullYear()) {
+  try {
+    const snap = await getDocs(collection(db, "events"));
+    const batch = writeBatch(db);
+    snap.forEach((docSnap) => {
+      const d = docSnap.data();
+      if (d.year == null) {
+        batch.update(doc(db, "events", docSnap.id), { year: defaultYear });
+      }
+    });
+    await batch.commit();
+    alert("year をバックフィルしました");
+  } catch (e) {
+    console.error(e);
+    alert("バックフィルに失敗しました。\n" + e.message);
+  }
+}
+
 
 // ---------------- Top Page ----------------
 function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
   // イベント登録フォーム
+  const [year, setYear] = useState("");
   const [month, setMonth] = useState("");
   const [day, setDay] = useState("");
   const [weekday, setWeekday] = useState("");
@@ -326,13 +355,14 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
   const [savingEvent, setSavingEvent] = useState(false);
 
   async function registerEvent() {
-    if (!month || !day || !weekday || !name.trim()) {
-      alert("月・日・曜日・イベント名を入力してください。");
-      return;
-    }
+if (!year || !month || !day || !weekday || !name.trim()) {
+  alert("年・月・日・曜日・イベント名を入力してください。");
+  return;
+}
     try {
       setSavingEvent(true);
       await addDoc(collection(db, "events"), {
+        year: Number(year),
         month: Number(month),
         day: Number(day),
         weekday,
@@ -347,6 +377,7 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
         noteMemo: "",
         createdAt: Date.now(),
       });
+      setYear("");
       setMonth("");
       setDay("");
       setWeekday("");
@@ -412,6 +443,16 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
       <h2 style={styles.h2}>イベント登録</h2>
       <div className="grid" style={{ display: "grid", gap: 8 }}>
         <div style={styles.row}>
+           <select
+    value={year}
+    onChange={(e) => setYear(e.target.value)}
+    style={styles.select}
+  >
+    <option value="">年</option>
+    {YEAR_OPTIONS.map((y) => (
+      <option key={y} value={y}>{y}年</option>
+    ))}
+  </select>
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
@@ -464,6 +505,9 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
         </button>
       </div>
 
+
+
+
       <hr style={styles.hr} />
 
       {/* イベント一覧 */}
@@ -472,33 +516,52 @@ function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
         {events.length === 0 && (
           <div style={{ color: "#999", fontSize: 14 }}>イベントはまだありません</div>
         )}
-        {events.map((evt) => (
-          <div key={evt.id} style={styles.listItem}>
-            <button
-              onClick={() => onOpenDetail(evt.id)}
-              style={{
-                background: "transparent",
-                border: 0,
-                textAlign: "left",
-                padding: 0,
-                color: TEXT,
-                fontSize: 16,
-                fontWeight: 500,
-                flex: 1,
-                cursor: "pointer",
-              }}
-              title="詳細を開く"
-            >
-              {formatEventLine(evt)}
-            </button>
-            <button
-              onClick={() => onDeleteEvent(evt.id)}
-              style={{ ...styles.btnOutline, width: "auto", padding: "8px 10px" }}
-            >
-              削除
-            </button>
-          </div>
-        ))}
+       {events.map((evt) => (
+  <div key={evt.id} style={styles.listItem}>
+    {/* 左：日付＋イベント名（2行） */}
+    <button
+      onClick={() => onOpenDetail(evt.id)}
+      style={{
+        background: "transparent",
+        border: 0,
+        textAlign: "left",
+        padding: 0,
+        color: TEXT,
+        flex: 1,
+        cursor: "pointer",
+        minWidth: 0, // ← 折り返し用
+      }}
+      title="詳細を開く"
+    >
+      <div style={{ display: "grid", gap: 2 }}>
+        <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>
+          {formatEventDate(evt)}
+        </span>
+        <span
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {evt.name || ""}
+        </span>
+      </div>
+    </button>
+
+    {/* 右：削除ボタン */}
+    <button
+      onClick={() => onDeleteEvent(evt.id)}
+      style={{ ...styles.btnOutline, width: "auto", padding: "8px 10px", flex: "none" }}
+      title="このイベントを削除"
+    >
+      削除
+    </button>
+  </div>
+))}
+        
       </div>
 
       <hr style={styles.hr} />
@@ -656,6 +719,7 @@ function DetailPage({ eventId, players, onBack }) {
   const [noteMemo, setNoteMemo] = useState("");
 
   // 追加：イベント基本情報を編集可能に
+  const [eYear, setEYear] = useState("");
   const [eMonth, setEMonth] = useState("");
   const [eDay, setEDay] = useState("");
   const [eWeekday, setEWeekday] = useState("");
@@ -674,6 +738,7 @@ function DetailPage({ eventId, players, onBack }) {
     setNoteMemo(eventData.noteMemo || "");
 
     // 基本情報
+    setEYear(String(eventData.year || ""));
     setEMonth(String(eventData.month || ""));
     setEDay(String(eventData.day || ""));
     setEWeekday(eventData.weekday || "");
@@ -694,63 +759,67 @@ function DetailPage({ eventId, players, onBack }) {
     }));
   }
 
-  // 出席・調整中を男女別で集計
-const attendanceSummary = useMemo(() => {
-  const boysPresent = [];
-  const girlsPresent = [];
-  const boysAdjust  = [];
-  const girlsAdjust = [];
+  // 出席・調整中・遅刻・早退を男女別で集計
+  const attendanceSummary = useMemo(() => {
+    const boys = { present: [], adjust: [], late: [], early: [] };
+    const girls = { present: [], adjust: [], late: [], early: [] };
 
-  const sortFn = (a, b) =>
-    (b.grade || 0) - (a.grade || 0) ||
-    (a.name || "").localeCompare(b.name || "");
+    const pushTo = (gender, bucket, item) => {
+      if (gender === "男子") boys[bucket].push(item);
+      if (gender === "女子") girls[bucket].push(item);
+    };
 
-  players.forEach((p) => {
-    const s = uiMap[p.id]?.status || "未回答";
-    const item = { name: p.name, grade: Number(p.grade) || 0 };
-    if (s === "出席") {
-      if (p.gender === "男子") boysPresent.push(item);
-      if (p.gender === "女子") girlsPresent.push(item);
-    } else if (s === "調整中") {
-      if (p.gender === "男子") boysAdjust.push(item);
-      if (p.gender === "女子") girlsAdjust.push(item);
-    }
-  });
+    const sortFn = (a, b) =>
+      (b.grade || 0) - (a.grade || 0) ||
+      (a.name || "").localeCompare(b.name || "");
 
-  [boysPresent, girlsPresent, boysAdjust, girlsAdjust].forEach(arr => arr.sort(sortFn));
+    players.forEach((p) => {
+      const s = uiMap[p.id]?.status || "未回答";
+      const item = { name: p.name, grade: Number(p.grade) || 0 };
 
-  return {
-    boys: {
-      presentCount: boysPresent.length,
-      presentNames: boysPresent.map(x => x.name),
-      adjustCount:  boysAdjust.length,
-      adjustNames:  boysAdjust.map(x => x.name),
-    },
-    girls: {
-      presentCount: girlsPresent.length,
-      presentNames: girlsPresent.map(x => x.name),
-      adjustCount:  girlsAdjust.length,
-      adjustNames:  girlsAdjust.map(x => x.name),
-    },
-  };
-}, [uiMap, players]);
+      if (s === "出席")       pushTo(p.gender, "present", item);
+      else if (s === "調整中") pushTo(p.gender, "adjust",  item);
+      else if (s === "遅刻")   pushTo(p.gender, "late",    item);
+      else if (s === "早退")   pushTo(p.gender, "early",   item);
+    });
 
+    [boys.present, boys.adjust, boys.late, boys.early,
+     girls.present, girls.adjust, girls.late, girls.early].forEach(arr => arr.sort(sortFn));
+
+    const pack = (arr) => ({
+      count: arr.length,
+      names: arr.map(x => x.name),
+    });
+
+    return {
+      boys: {
+        present: pack(boys.present),
+        adjust:  pack(boys.adjust),
+        late:    pack(boys.late),
+        early:   pack(boys.early),
+      },
+      girls: {
+        present: pack(girls.present),
+        adjust:  pack(girls.adjust),
+        late:    pack(girls.late),
+        early:   pack(girls.early),
+      },
+    };
+  }, [uiMap, players]);
 
   async function saveAll() {
     // 入力チェック（基本情報）
     if (!eMonth || !eDay || !eWeekday || !eName.trim()) {
-      if (
-        !window.confirm(
-          "日付またはイベント名が未入力です。このまま保存しますか？（未入力のままでも保存はできます）"
-        )
-      ) {
-        return;
-      }
+      const ok = window.confirm(
+        "日付またはイベント名が未入力です。このまま保存しますか？（未入力のままでも保存はできます）"
+      );
+      if (!ok) return;
     }
 
     try {
       await updateDoc(doc(db, "events", eventId), {
         // 基本情報も保存
+        year: eYear ? Number(eYear) : null,
         month: eMonth ? Number(eMonth) : null,
         day: eDay ? Number(eDay) : null,
         weekday: eWeekday || "",
@@ -785,13 +854,25 @@ const attendanceSummary = useMemo(() => {
   const currentStatus = (p) => uiMap[p.id]?.status || "未回答";
 
   return (
-    <>
+    <div>
       <h1 style={styles.h1}>🏀イベント詳細</h1>
+      
 
       <h2 style={styles.h2}>イベント情報</h2>
       <div style={{ display: "grid", gap: 8 }}>
         <div style={{ display: "grid", gap: 8 }}>
           <div style={styles.row}>
+            <select
+              style={{ ...styles.select, flex: 1 }}
+              value={eYear}
+              onChange={(e) => setEYear(e.target.value)}
+            >
+              <option value="">年</option>
+              {YEAR_OPTIONS.map((y) => (
+                <option key={y} value={y}>{y}年</option>
+              ))}
+            </select>
+
             <select
               style={{ ...styles.select, flex: 1 }}
               value={eMonth}
@@ -833,124 +914,150 @@ const attendanceSummary = useMemo(() => {
             onChange={(e) => setEName(e.target.value)}
           />
         </div>
-         <hr style={styles.hr} />
-
-      <h2 style={styles.h2}>選手出欠管理</h2>
-
-{/* 合計欄（男子→女子、出席→調整中 の順） */}
-<div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6, width: "100%" }}>
-  {/* 男子 出席 */}
-  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
-    <b>男子 出席 {attendanceSummary.boys.presentCount}名：</b>
-    {attendReady
-      ? (attendanceSummary.boys.presentNames.length ? attendanceSummary.boys.presentNames.join("、") : "—")
-      : "読み込み中…"}
-  </div>
-
-  {/* 男子 調整中 */}
-  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
-    <b>男子 調整中 {attendanceSummary.boys.adjustCount}名：</b>
-    {attendReady
-      ? (attendanceSummary.boys.adjustNames.length ? attendanceSummary.boys.adjustNames.join("、") : "—")
-      : "読み込み中…"}
-  </div>
-
-  {/* 女子 出席 */}
-  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
-    <b>女子 出席 {attendanceSummary.girls.presentCount}名：</b>
-    {attendReady
-      ? (attendanceSummary.girls.presentNames.length ? attendanceSummary.girls.presentNames.join("、") : "—")
-      : "読み込み中…"}
-  </div>
-
-  {/* 女子 調整中 */}
-  <div style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}>
-    <b>女子 調整中 {attendanceSummary.girls.adjustCount}名：</b>
-    {attendReady
-      ? (attendanceSummary.girls.adjustNames.length ? attendanceSummary.girls.adjustNames.join("、") : "—")
-      : "読み込み中…"}
-  </div>
-</div>
-
-<div style={{ display: "grid", gap: 8, margin: "8px 0 12px" }}>
-  <button
-    type="button"
-    onClick={() => setOpenAttendance(v => !v)}
-    aria-expanded={openAttendance}
-    style={{ ...styles.btnOutline, width: "auto", padding: "8px 12px" }}
-    title="選手ごとの出欠入力を開閉"
-  >
-    {openAttendance ? "出欠入力 ▼" : "出欠入力 ▶"}
-  </button>
-</div>
- {/* 出欠入力（トグル展開時のみ表示） */}
- {openAttendance && (
-   <>
-
-
-      {/* 男子リスト */}
-      <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-        <div><span style={styles.pill}>男子</span></div>
-        {players
-          .filter((p) => p.gender === "男子")
-          .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
-          .map((p) => {
-            const cur = currentStatus(p);
-            const colorStyle = statusBg(cur);
-            return (
-              <div key={p.id} style={styles.listItem}>
-                <div style={{ fontSize: 16, marginRight: 8 }}>
-                  <b>{p.grade}年</b> {p.name}
-                </div>
-                <select
-                  style={{ ...styles.select, ...colorStyle }}
-                  value={cur}
-                  onChange={(e) => updateLocalAttendance(p, e.target.value)}
-                >
-                  {ATTEND_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            );
-          })}
-      </div>
-
-      {/* 女子リスト */}
-      <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-        <div><span style={styles.pill}>女子</span></div>
-        {players
-          .filter((p) => p.gender === "女子")
-          .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
-          .map((p) => {
-            const cur = currentStatus(p);
-            const colorStyle = statusBg(cur);
-            return (
-              <div key={p.id} style={styles.listItem}>
-                <div style={{ fontSize: 16, marginRight: 8 }}>
-                  <b>{p.grade}年</b> {p.name}
-                </div>
-                <select
-                  style={{ ...styles.select, ...colorStyle }}
-                  value={cur}
-                  onChange={(e) => updateLocalAttendance(p, e.target.value)}
-                >
-                  {ATTEND_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            );
-          })}
-      </div>
-                  <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        {/* 登録/戻る（フッター） */}
+      <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
         <button style={styles.btn} onClick={saveAll}>登録</button>
         <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
       </div>
 
+        <hr style={styles.hr} />
 
-   </>
- )}
+        <h2 style={styles.h2}>選手出欠管理</h2>
 
-      <hr style={styles.hr} />
-        
-   <h2 style={styles.h2}>場所</h2>
+        {/* 合計欄（男子→女子、出席→調整中→遅刻→早退 の順） */}
+        <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6, width: "100%" }}>
+          {[
+            ["男子", "出席", attendanceSummary.boys.present],
+            ["男子", "調整中", attendanceSummary.boys.adjust],
+            ["男子", "遅刻", attendanceSummary.boys.late],
+            ["男子", "早退", attendanceSummary.boys.early],
+            ["女子", "出席", attendanceSummary.girls.present],
+            ["女子", "調整中", attendanceSummary.girls.adjust],
+            ["女子", "遅刻", attendanceSummary.girls.late],
+            ["女子", "早退", attendanceSummary.girls.early],
+          ].map(([gender, label, data]) => (
+            <div
+              key={`${gender}-${label}`}
+              style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}
+            >
+              <b>{gender} {label} {data.count}名：</b>
+              {attendReady ? (data.names.length ? data.names.join("、") : "—") : "読み込み中…"}
+            </div>
+          ))}
+        </div>
+
+        {/* 出欠入力の開閉トグル */}
+        <div style={{ display: "grid", gap: 8, margin: "8px 0 12px" }}>
+          <button
+            type="button"
+            onClick={() => setOpenAttendance((v) => !v)}
+            aria-expanded={openAttendance}
+            style={{ ...styles.btnOutline, width: "auto", padding: "8px 12px" }}
+            title="選手ごとの出欠入力を開閉"
+          >
+            {openAttendance ? "出欠入力 ▼" : "出欠入力 ▶"}
+          </button>
+        </div>
+
+        {/* 出欠入力（トグル展開時のみ表示） */}
+        {openAttendance && (
+          <div data-block="attendance">
+            {/* 男子リスト */}
+            <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+              <div><span style={styles.pill}>男子</span></div>
+              {players
+                .filter((p) => p.gender === "男子")
+                .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
+                .map((p) => {
+                  const cur = currentStatus(p);
+                  const colorStyle = statusBg(cur);
+                  return (
+                    <div key={p.id} style={styles.listItem}>
+                      <div style={{ fontSize: 16, marginRight: 8 }}>
+                        <b>{p.grade}年</b> {p.name}
+                      </div>
+                      <select
+                        style={{ ...styles.select, ...colorStyle }}
+                        value={cur}
+                        onChange={(e) => updateLocalAttendance(p, e.target.value)}
+                      >
+                        {ATTEND_STATUSES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* 女子リスト */}
+            <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+              <div><span style={styles.pill}>女子</span></div>
+              {players
+                .filter((p) => p.gender === "女子")
+                .sort((a, b) => parseInt(b.grade) - parseInt(a.grade) || (a.name || "").localeCompare(b.name || ""))
+                .map((p) => {
+                  const cur = currentStatus(p);
+                  const colorStyle = statusBg(cur);
+                  return (
+                    <div key={p.id} style={styles.listItem}>
+                      <div style={{ fontSize: 16, marginRight: 8 }}>
+                        <b>{p.grade}年</b> {p.name}
+                      </div>
+                      <select
+                        style={{ ...styles.select, ...colorStyle }}
+                        value={cur}
+                        onChange={(e) => updateLocalAttendance(p, e.target.value)}
+                      >
+                        {ATTEND_STATUSES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* 登録/戻る（トグル内） */}
+            <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+              <button style={styles.btn} onClick={saveAll}>登録</button>
+              <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+            </div>
+          </div>
+        )}
+
+
+      <h2 style={styles.h2}>参加コーチ名</h2>
+      <textarea
+        style={{ ...styles.textarea, minHeight: 100 }}
+        placeholder="コーチ"
+        value={coachMemo}
+        onChange={(e) => setCoachMemo(e.target.value)}
+      />
+      <h2 style={styles.h2}>引率保護者名</h2>
+      <textarea
+        style={{ ...styles.textarea, minHeight: 100 }}
+        placeholder="引率"
+        value={escortMemo}
+        onChange={(e) => setEscortMemo(e.target.value)}
+      />
+      <h2 style={styles.h2}>配車OK</h2>
+      <textarea
+        style={{ ...styles.textarea, minHeight: 100 }}
+        placeholder="配車"
+        value={carMemo}
+        onChange={(e) => setCarMemo(e.target.value)}
+      />
+
+      {/* 登録/戻る（フッター） */}
+      <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        <button style={styles.btn} onClick={saveAll}>登録</button>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+      </div>
+
+        <hr style={styles.hr} />
+
+        <h2 style={styles.h2}>場所</h2>
         <input
           style={styles.input}
           placeholder="場所"
@@ -958,81 +1065,61 @@ const attendanceSummary = useMemo(() => {
           onChange={(e) => setPlace(e.target.value)}
         />
 
-        
-         <h2 style={styles.h2}>時間/集合場所/鍵当番 等</h2>
+        <h2 style={styles.h2}>時間/集合場所 等</h2>
         <input
           style={styles.input}
-          placeholder="時間/集合場所/鍵当番 等"
+          placeholder="時間/集合場所 等"
           value={meetTime}
           onChange={(e) => setMeetTime(e.target.value)}
         />
 
         <h2 style={styles.h2}>配車代/担当</h2>
-     <input
-  style={styles.input}
-  placeholder="配車代/担当"
-  value={carCost}
-  onChange={(e) => setCarCost(e.target.value)}
-/>
-                 <h2 style={styles.h2}>もちもの</h2>
+        <input
+          style={styles.input}
+          placeholder="配車代/担当"
+          value={carCost}
+          onChange={(e) => setCarCost(e.target.value)}
+        />
+
+        <h2 style={styles.h2}>その他詳細</h2>
         <textarea
-          style={styles.textarea}
+          style={{ ...styles.textarea, minHeight: 1000 }}
           placeholder="もちもの"
           value={items}
           onChange={(e) => setItems(e.target.value)}
-        />
-                         <h2 style={styles.h2}>服装</h2>
-        <textarea
-          style={styles.textarea}
-          placeholder="服装"
-          value={detail}
-          onChange={(e) => setDetail(e.target.value)}
-        />
-      </div>
+        /><></>
+    </div>
+{/* （いまは画面に出さない） */}
+
+{false && (
+  <>
+    <h2 style={styles.h2}>服装</h2>
+    <textarea
+      style={styles.textarea}
+      placeholder="服装"
+      value={detail}
+      onChange={(e) => setDetail(e.target.value)}
+    />
 
 
-      
 
-     
 
-      
-
-      <h2 style={styles.h2}>コーチ出欠</h2>
-      <textarea
-        style={{ ...styles.textarea, minHeight: 80 }}  
-        placeholder="コーチ出欠"
-        value={coachMemo}
-        onChange={(e) => setCoachMemo(e.target.value)}
-      />
-
-      <h2 style={styles.h2}>引率</h2>
-      <textarea
-        style={{ ...styles.textarea, minHeight: 80 }}  
-        placeholder="引率"
-        value={escortMemo}
-        onChange={(e) => setEscortMemo(e.target.value)}
-      />
-
-      <h2 style={styles.h2}>配車</h2>
-      <textarea
-        style={{ ...styles.textarea, minHeight: 300 }}  
-        placeholder="配車"
-        value={carMemo}
-        onChange={(e) => setCarMemo(e.target.value)}
-      />
 
       <h2 style={styles.h2}>その他補足</h2>
       <textarea
-        style={{ ...styles.textarea, minHeight: 500 }}  
+        style={{ ...styles.textarea, minHeight: 500 }}
         placeholder="その他補足"
         value={noteMemo}
         onChange={(e) => setNoteMemo(e.target.value)}
       />
+  </>
+      )}
 
+      {/* 登録/戻る（フッター） */}
       <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
         <button style={styles.btn} onClick={saveAll}>登録</button>
         <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
       </div>
-    </>
+    </div>
   );
 }
