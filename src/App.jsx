@@ -191,6 +191,69 @@ const styles = {
     padding: "3px 8px",
   },
 };
+// ===== URL/メールを安全寄りに自動リンク化するヘルパー =====
+function renderWithLineBreaks(plain) {
+  const segments = String(plain || "").split(/\n/);
+  return segments.map((seg, idx) =>
+    idx === 0 ? (
+      seg
+    ) : (
+      <React.Fragment key={`lb-${idx}`}>
+        <br />
+        {seg}
+      </React.Fragment>
+    )
+  );
+}
+
+function linkify(text) {
+  if (!text) return null;
+  const pattern = /(https?:\/\/[^\s\u3000]+|www\.[^\s\u3000]+|[\w.+-]+@[\w-]+\.[\w.-]+)/gi;
+
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const urlText = match[0];
+    const start = match.index;
+
+    if (start > lastIndex) {
+      parts.push(renderWithLineBreaks(text.slice(lastIndex, start)));
+    }
+
+    let href = urlText;
+    let isEmail = false;
+
+    if (/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(urlText)) {
+      isEmail = true;
+      href = `mailto:${urlText}`;
+    } else if (/^www\./i.test(urlText)) {
+      href = `https://${urlText}`;
+    }
+
+    parts.push(
+      <a
+        key={`link-${start}-${urlText}`}
+        href={href}
+        target={isEmail ? "_self" : "_blank"}
+        rel={isEmail ? undefined : "noopener noreferrer"}
+        style={{ textDecoration: "underline", wordBreak: "break-all" }}
+      >
+        {urlText}
+      </a>
+    );
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(renderWithLineBreaks(text.slice(lastIndex)));
+  }
+
+  return <>{parts}</>;
+}
+
 
 // ステータス別セレクト背景
 function statusBg(status) {
@@ -1087,23 +1150,51 @@ function DetailPage({ eventId, players, onBack }) {
           placeholder="もちもの"
           value={items}
           onChange={(e) => setItems(e.target.value)}
-        /><></>
+        />
     </div>
+
+<h2 style={styles.h2}>その他資料情報＆リンク</h2>
+<textarea
+  style={styles.textarea}
+  placeholder="URL"
+  value={detail}
+  onChange={(e) => setDetail(e.target.value)}
+/>
+
+{/* クリック可能なプレビュー */}
+<div
+  style={{
+    marginTop: 8,
+    padding: "10px 12px",
+    border: "1px dashed #dcdcdc",
+    borderRadius: 10,
+    background: "#fafbfd",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    fontSize: 14,
+    lineHeight: 1.6,
+  }}
+>
+  {detail?.trim()
+    ? (
+      <>
+        <div style={{ fontWeight: 600, marginBottom: 6, color: "#5a6b8a" }}>
+          リンクはクリックで開く：
+        </div>
+        {linkify(detail)}
+      </>
+    )
+    : <span style={{ color: "#999" }}>ここに入力するとリンクとして表示されます</span>
+  }
+</div>
+
+
+
+
 {/* （いまは画面に出さない） */}
 
 {false && (
   <>
-    <h2 style={styles.h2}>服装</h2>
-    <textarea
-      style={styles.textarea}
-      placeholder="服装"
-      value={detail}
-      onChange={(e) => setDetail(e.target.value)}
-    />
-
-
-
-
 
       <h2 style={styles.h2}>その他補足</h2>
       <textarea
