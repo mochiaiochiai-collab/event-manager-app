@@ -1153,7 +1153,7 @@ function DetailPage({ eventId, players, onBack }) {
         />
     </div>
 
-<h2 style={styles.h2}>その他資料情報＆リンク</h2>
+<h2 style={styles.h2}>その他資料情報＆リンク記入</h2>
 <textarea
   style={styles.textarea}
   placeholder="URL"
@@ -1179,7 +1179,7 @@ function DetailPage({ eventId, players, onBack }) {
     ? (
       <>
         <div style={{ fontWeight: 600, marginBottom: 6, color: "#5a6b8a" }}>
-          リンクはクリックで開く：
+          リンク生成欄：
         </div>
         {linkify(detail)}
       </>
