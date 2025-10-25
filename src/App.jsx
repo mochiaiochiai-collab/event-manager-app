@@ -57,6 +57,36 @@ function useNotoSans() {
 
 // --------- スタイル（中央配置＆幅統一） ---------
 const styles = {
+
+    // --- 追加：小さめボタン ---
+  btnSm: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+    fontSize: 14,
+    fontWeight: 600,
+    padding: "8px 10px",
+    background: ACCENT,
+    color: "#fff",
+    borderRadius: 10,
+    border: 0,
+    width: "auto",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  btnOutlineSmGray: {
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+    fontSize: 13,
+    fontWeight: 600,
+    padding: "6px 8px",
+    background: "#f5f5f7",
+    color: "#666",
+    borderRadius: 10,
+    border: "1px solid #cfcfd4",
+    width: "auto",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+
+
   app: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
     background: "#f5f7fb",
@@ -579,51 +609,56 @@ if (!year || !month || !day || !weekday || !name.trim()) {
         {events.length === 0 && (
           <div style={{ color: "#999", fontSize: 14 }}>イベントはまだありません</div>
         )}
-       {events.map((evt) => (
+{events.map((evt) => (
   <div key={evt.id} style={styles.listItem}>
-    {/* 左：日付＋イベント名（2行） */}
-    <button
-      onClick={() => onOpenDetail(evt.id)}
-      style={{
-        background: "transparent",
-        border: 0,
-        textAlign: "left",
-        padding: 0,
-        color: TEXT,
-        flex: 1,
-        cursor: "pointer",
-        minWidth: 0, // ← 折り返し用
-      }}
-      title="詳細を開く"
-    >
-      <div style={{ display: "grid", gap: 2 }}>
-        <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>
-          {formatEventDate(evt)}
-        </span>
-        <span
-          style={{
-            fontSize: 16,
-            fontWeight: 600,
-            lineHeight: 1.4,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {evt.name || ""}
-        </span>
-      </div>
-    </button>
-
-    {/* 右：削除ボタン */}
+    {/* 左：小さなグレーの削除ボタン（誤タップ防止のため左＆小さく） */}
     <button
       onClick={() => onDeleteEvent(evt.id)}
-      style={{ ...styles.btnOutline, width: "auto", padding: "8px 10px", flex: "none" }}
+      style={styles.btnOutlineSmGray}
       title="このイベントを削除"
+      aria-label="このイベントを削除"
     >
       削除
     </button>
+
+    {/* 中央：日付＋イベント名（タップでは遷移しない） */}
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        display: "grid",
+        gap: 2,
+        padding: "0 4px",
+      }}
+    >
+      <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>
+        {formatEventDate(evt)}
+      </span>
+      <span
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          lineHeight: 1.4,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {evt.name || ""}
+      </span>
+    </div>
+
+    {/* 右：小さな「詳細」ボタンで詳細ページへ */}
+    <button
+      onClick={() => onOpenDetail(evt.id)}
+      style={styles.btnSm}
+      title="詳細を開く"
+      aria-label="詳細を開く"
+    >
+      詳細
+    </button>
   </div>
 ))}
+
         
       </div>
 
