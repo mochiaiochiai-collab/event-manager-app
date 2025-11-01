@@ -1423,50 +1423,98 @@ function UniformPage({ players, onBack }) {
     </div>
   );
 }
-// ---------------- memo Page ----------------
+// ---------------- Memo Detail Page ----------------
 function MemoDetailPage({ memoId, onBack }) {
-  const [memo, setMemo] = useState(null);
-  const [body, setBody] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState("");      // タイトル（メモ名）
+  const [content, setContent] = useState("");  // 本文
 
+  // メモ取得
   useEffect(() => {
     const ref = doc(db, "memos", memoId);
-    return onSnapshot(ref, (snap) => {
-      const data = { id: snap.id, ...snap.data() };
-      setMemo(data);
-      setBody(data.body || "");
-    });
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const d = snap.data() || {};
+        setTitle(d.name || "");
+        setContent(d.body ?? d.content ?? "");
+        setLoading(false);
+      },
+      (err) => {
+        console.error("memo onSnapshot error:", err);
+        alert("メモの取得に失敗しました。\n" + err.message);
+      }
+    );
+    return () => unsub();
   }, [memoId]);
 
-  async function save() {
+  // 保存
+  async function saveMemo() {
     try {
       await updateDoc(doc(db, "memos", memoId), {
-        body,
+        name: (title || "").trim(),
+        body: content,
         updatedAt: Date.now(),
       });
-      alert("登録しました");
+      alert("保存しました");
     } catch (e) {
       console.error(e);
       alert("保存に失敗しました。\n" + e.message);
     }
   }
 
-  if (!memo) return null;
+  if (loading) return null;
+
+  // 入力中の本文にURLやメールが含まれるかどうか判定
+  const hasLink = /https?:\/\/|www\.|[\w.+-]+@[\w-]+\.[\w.-]+/.test(content);
 
   return (
     <div>
-      <h1 style={styles.h1}>📝 {memo.name || "メモ"}</h1>
-      <textarea
-        style={{ ...styles.textarea, minHeight: "70vh" }}
-        placeholder="ここに自由に入力"
-        value={body}
-        onChange={(e)=>setBody(e.target.value)}
+      <h1 style={styles.h1}>📝 メモ詳細</h1>
+
+      {/* タイトル入力 */}
+      <input
+        style={styles.input}
+        placeholder="メモ名を入力"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
       />
-      <div style={{ display:"grid", gap:8, marginTop:16 }}>
-        <button style={styles.btn} onClick={save}>登録</button>
+
+      {/* 本文入力 */}
+      <textarea
+        style={{ ...styles.textarea, minHeight: "50vh" }}
+        placeholder="メモ本文を自由に入力（URLを入れるとリンクとして表示されます）"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+
+      {/* リンクがあるときだけプレビューを表示 */}
+      {hasLink && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            border: "1px dashed #dcdcdc",
+            borderRadius: 10,
+            background: "#fafbfd",
+            fontSize: 14,
+            lineHeight: 1.6,
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6, color: "#5a6b8a" }}>
+            🔗 リンクプレビュー
+          </div>
+          {linkify(content)}
+        </div>
+      )}
+
+      {/* ボタン群 */}
+      <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        <button style={styles.btn} onClick={saveMemo}>登録</button>
         <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
       </div>
     </div>
   );
 }
-
-
