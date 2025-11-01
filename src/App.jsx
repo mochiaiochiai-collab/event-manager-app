@@ -1293,48 +1293,53 @@ const attendanceSummary = useMemo(() => {
 }
 // ---------------- UniformPage Page ----------------
 function UniformPage({ players, onBack }) {
-  // 学年降順（6→1）。同学年は名前の五十音順
-  const byGradeDesc = (a, b) =>
-    (parseInt(b.grade || 0) - parseInt(a.grade || 0)) ||
-    (a.name || "").localeCompare(b.name || "");
+  // 並び順：ユニフォーム番号の昇順（空欄は最後）
+  const byUniformAsc = (a, b) => {
+    const ua = parseInt(a.uniformNo || 0);
+    const ub = parseInt(b.uniformNo || 0);
+    if (!a.uniformNo && !b.uniformNo) return 0;
+    if (!a.uniformNo) return 1;
+    if (!b.uniformNo) return -1;
+    return ua - ub;
+  };
 
-  // ローカル編集マップ { playerId: { uniformNo: "00", bibNo: "00" } }
   const [numMap, setNumMap] = useState({});
 
-  // players から初期値をセット（順序は関係なし）
+  // Firestore → ローカルstateへ初期値セット
   useEffect(() => {
     const m = {};
     (players || []).forEach(p => {
       m[p.id] = {
         uniformNo: (p.uniformNo ?? "").toString(),
         bibNo: (p.bibNo ?? "").toString(),
+        kanjiName: (p.kanjiName ?? "").toString(),
       };
     });
     setNumMap(m);
   }, [players]);
 
-  // 男女別に 6年→1年 で並べる（ここが今回のポイント）
+  // 男女別の並べ替え
   const boys = useMemo(
-    () => [...(players || [])].filter(p => p.gender === "男子").sort(byGradeDesc),
+    () => [...(players || [])].filter(p => p.gender === "男子").sort(byUniformAsc),
     [players]
   );
   const girls = useMemo(
-    () => [...(players || [])].filter(p => p.gender === "女子").sort(byGradeDesc),
+    () => [...(players || [])].filter(p => p.gender === "女子").sort(byUniformAsc),
     [players]
   );
 
-  // 入力値を2桁の数字に（空は許可）
+  // 入力整形
   const sanitize = (value) => value.replace(/\D/g, "").slice(0, 2);
   const pad2 = (s) => (s === "" ? "" : s.padStart(2, "0"));
 
   const updateField = (pid, key, value) => {
     setNumMap(prev => ({
       ...prev,
-      [pid]: { ...(prev[pid] || {}), [key]: sanitize(value) },
+      [pid]: { ...(prev[pid] || {}), [key]: value },
     }));
   };
 
-  // 保存
+  // 保存処理（番号＋漢字氏名）
   async function saveAll() {
     try {
       const writes = Object.entries(numMap).map(([pid, val]) => {
@@ -1347,56 +1352,100 @@ function UniformPage({ players, onBack }) {
           const v = sanitize(val.bibNo);
           payload.bibNo = v === "" ? "" : pad2(v);
         }
+        if (val.kanjiName !== undefined) {
+          payload.kanjiName = val.kanjiName.trim();
+        }
         return setDoc(doc(db, "players", pid), payload, { merge: true });
       });
       await Promise.all(writes);
-      alert("ユニフォーム／ビブス番号を登録しました");
+      alert("ユニフォーム／ビブス番号／漢字氏名を登録しました");
     } catch (e) {
       console.error(e);
-      alert("番号の登録に失敗しました。\n" + e.message);
+      alert("保存に失敗しました。\n" + e.message);
     }
   }
 
   const renderList = (list, label) => (
-    <div style={{ display: "grid", gap: 6, marginBottom: 16 }}>
+    <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
       <div><span style={styles.pill}>{label}</span></div>
       {list.map((p) => {
-        const cur = numMap[p.id] || { uniformNo: "", bibNo: "" };
+        const cur = numMap[p.id] || { uniformNo: "", bibNo: "", kanjiName: "" };
         return (
-          <div key={p.id} style={styles.listItem}>
-            <div style={{ fontSize: 16, flex: 1, minWidth: 0 }}>
-              <b>{p.grade}年</b> {p.name}
+          <div key={p.id} style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            background: "#fff",
+            padding: "8px 12px"
+          }}>
+            {/* 上段：カタカナ名と番号 */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 8,
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>
+                <b>{p.grade}年</b> {p.name}
+              </div>
+
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                whiteSpace: "nowrap"
+              }}>
+                <small style={{ color: "#666" }}>ユニ</small>
+                <input
+                  inputMode="numeric"
+                  placeholder="00"
+                  value={cur.uniformNo}
+                  onChange={(e) => updateField(p.id, "uniformNo", e.target.value)}
+                  onBlur={(e) =>
+                    updateField(p.id, "uniformNo", pad2(sanitize(e.target.value)))
+                  }
+                  style={{
+                    ...styles.numBox2,
+                    width: 46,
+                    textAlign: "center",
+                    padding: "6px 4px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                />
+                <small style={{ color: "#666" }}>ビブス</small>
+                <input
+                  inputMode="numeric"
+                  placeholder="00"
+                  value={cur.bibNo}
+                  onChange={(e) => updateField(p.id, "bibNo", e.target.value)}
+                  onBlur={(e) =>
+                    updateField(p.id, "bibNo", pad2(sanitize(e.target.value)))
+                  }
+                  style={{
+                    ...styles.numBox2,
+                    width: 46,
+                    textAlign: "center",
+                    padding: "6px 4px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                />
+              </div>
             </div>
 
-            {/* ユニフォーム番号 */}
-            <div style={{ display: "grid", gap: 4, justifyItems: "center" }}>
-              <small style={{ color: "#666" }}>ユニ</small>
+            {/* 下段：漢字氏名 */}
+            <div style={{ marginTop: 6 }}>
               <input
-                inputMode="numeric"
-                placeholder="00"
-                value={cur.uniformNo}
-                onChange={(e) => updateField(p.id, "uniformNo", e.target.value)}
-                onBlur={(e) =>
-                  updateField(p.id, "uniformNo", pad2(sanitize(e.target.value)))
-                }
-                style={styles.numBox2}
-                aria-label="ユニフォーム番号"
-              />
-            </div>
-
-            {/* ビブス番号 */}
-            <div style={{ display: "grid", gap: 4, justifyItems: "center" }}>
-              <small style={{ color: "#666" }}>ビブス</small>
-              <input
-                inputMode="numeric"
-                placeholder="00"
-                value={cur.bibNo}
-                onChange={(e) => updateField(p.id, "bibNo", e.target.value)}
-                onBlur={(e) =>
-                  updateField(p.id, "bibNo", pad2(sanitize(e.target.value)))
-                }
-                style={styles.numBox2}
-                aria-label="ビブス番号"
+                style={{
+                  ...styles.input,
+                  fontSize: 14,
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                }}
+                placeholder="漢字氏名（例：山田 太郎）"
+                value={cur.kanjiName}
+                onChange={(e) => updateField(p.id, "kanjiName", e.target.value)}
               />
             </div>
           </div>
@@ -1408,9 +1457,8 @@ function UniformPage({ players, onBack }) {
   return (
     <div>
       <h1 style={styles.h1}>🎽 ユニフォーム番号管理</h1>
-
       <div style={{ fontSize: 14, marginBottom: 8 }}>
-        表示順：<b>男子 6→1</b> / <b>女子 6→1</b>
+        並び順：<b>ユニフォーム番号の小さい順</b>（男女別／空欄は最後）
       </div>
 
       {renderList(boys, "男子")}
@@ -1423,6 +1471,8 @@ function UniformPage({ players, onBack }) {
     </div>
   );
 }
+
+
 // ---------------- Memo Detail Page ----------------
 function MemoDetailPage({ memoId, onBack }) {
   const [loading, setLoading] = useState(true);
