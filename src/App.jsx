@@ -58,6 +58,20 @@ function useNotoSans() {
 // --------- スタイル（中央配置＆幅統一） ---------
 const styles = {
 
+    numBox2: {
+   width: 56,
+    padding: "8px 10px",
+    border: "1px solid #ddd",
+    borderRadius: 10,
+    textAlign: "center",
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+    fontSize: 16,
+    fontWeight: 600,
+    color: TEXT,
+    background: "#fff",
+    boxSizing: "border-box",
+  },
+
     // --- 追加：小さめボタン ---
   btnSm: {
     fontFamily: "'Noto Sans JP', system-ui, sans-serif",
@@ -322,9 +336,11 @@ function sortPlayersForList(players) {
 // ---------------- App ----------------
 export default function App() {
   useNotoSans();
-
-  const [view, setView] = useState("top"); // "top" | "detail"
+  
+  const [view, setView] = useState("top"); // "top" | "detail" | "uniforms"
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [memos, setMemos] = useState([]);
+  const [selectedMemoId, setSelectedMemoId] = useState(null);
 
   // イベント一覧（複合インデックス: month ASC, day ASC）
   const [events, setEvents] = useState([]);
@@ -348,6 +364,26 @@ const q = query(
     );
     return () => unsub();
   }, []);
+
+  // メモ一覧（新しい順）
+useEffect(() => {
+  const q = query(
+    collection(db, "memos"),
+    orderBy("createdAt", "desc")
+  );
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMemos(arr);
+    },
+    (err) => {
+      console.error("memos onSnapshot error:", err);
+      alert("メモ一覧の取得に失敗しました。\n" + err.message);
+    }
+  );
+  return () => unsub();
+}, []);
 
   // 選手一覧
   const [players, setPlayers] = useState([]);
@@ -376,6 +412,15 @@ const q = query(
     setView("top");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const goUniforms = () => {
+    setView("uniforms");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goMemoDetail = (id) => {
+  setSelectedMemoId(id);
+  setView("memo");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
   return (
     <div style={styles.app} className="eagles-app">
@@ -393,6 +438,7 @@ const q = query(
             <TopPage
               events={events}
               players={players}
+              memos={memos} 
               onDeleteEvent={async (id) => {
                 if (!window.confirm("このイベントを削除しますか？")) return;
                 try {
@@ -403,6 +449,17 @@ const q = query(
                 }
               }}
               onOpenDetail={goDetail}
+              onOpenUniforms={goUniforms}  
+              onOpenMemoDetail={goMemoDetail}
+              onDeleteMemo={async (id) => {   // ★ 追加
+    if (!window.confirm("このメモを削除しますか？")) return;
+    try {
+      await deleteDoc(doc(db, "memos", id));
+    } catch (e) {
+      console.error(e);
+      alert("メモ削除に失敗しました。\n" + e.message);
+    }
+  }}
             />
           )}
 
@@ -413,6 +470,20 @@ const q = query(
               onBack={backTop}
             />
           )}
+                    {view === "uniforms" && (
+            <UniformPage
+              players={players}
+              onBack={backTop}
+            />
+          )}
+          {view === "memo" && selectedMemoId && (
+  <MemoDetailPage
+    memoId={selectedMemoId}
+    onBack={backTop}
+  />
+)}
+
+          
         </div>
       </div>
     </div>
@@ -420,6 +491,7 @@ const q = query(
 }
 async function backfillEventYear(defaultYear = new Date().getFullYear()) {
   try {
+    
     const snap = await getDocs(collection(db, "events"));
     const batch = writeBatch(db);
     snap.forEach((docSnap) => {
@@ -434,24 +506,35 @@ async function backfillEventYear(defaultYear = new Date().getFullYear()) {
     console.error(e);
     alert("バックフィルに失敗しました。\n" + e.message);
   }
+  
 }
+
 
 
 // ---------------- Top Page ----------------
-function TopPage({ events, players, onDeleteEvent, onOpenDetail }) {
+function TopPage({
+  events,
+  players,
+  memos,
+  onDeleteEvent,
+  onOpenDetail,
+  onOpenUniforms,
+  onOpenMemoDetail,
+  onDeleteMemo
+}) {
   // イベント登録フォーム
-  const [year, setYear] = useState("");
-  const [month, setMonth] = useState("");
-  const [day, setDay] = useState("");
+  const [year, setYear]       = useState("");
+  const [month, setMonth]     = useState("");
+  const [day, setDay]         = useState("");
   const [weekday, setWeekday] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName]       = useState("");
   const [savingEvent, setSavingEvent] = useState(false);
 
   async function registerEvent() {
-if (!year || !month || !day || !weekday || !name.trim()) {
-  alert("年・月・日・曜日・イベント名を入力してください。");
-  return;
-}
+    if (!year || !month || !day || !weekday || !name.trim()) {
+      alert("年・月・日・曜日・イベント名を入力してください。");
+      return;
+    }
     try {
       setSavingEvent(true);
       await addDoc(collection(db, "events"), {
@@ -470,11 +553,7 @@ if (!year || !month || !day || !weekday || !name.trim()) {
         noteMemo: "",
         createdAt: Date.now(),
       });
-      setYear("");
-      setMonth("");
-      setDay("");
-      setWeekday("");
-      setName("");
+      setYear(""); setMonth(""); setDay(""); setWeekday(""); setName("");
     } catch (e) {
       console.error("add event error:", e);
       alert("イベントの登録に失敗しました。\n" + e.message);
@@ -484,8 +563,8 @@ if (!year || !month || !day || !weekday || !name.trim()) {
   }
 
   // 選手登録
-  const [pName, setPName] = useState("");
-  const [pGrade, setPGrade] = useState("");
+  const [pName, setPName]     = useState("");
+  const [pGrade, setPGrade]   = useState("");
   const [pGender, setPGender] = useState("");
   const [savingPlayer, setSavingPlayer] = useState(false);
 
@@ -502,9 +581,7 @@ if (!year || !month || !day || !weekday || !name.trim()) {
         gender: pGender,
         createdAt: Date.now(),
       });
-      setPName("");
-      setPGrade("");
-      setPGender("");
+      setPName(""); setPGrade(""); setPGender("");
     } catch (e) {
       console.error("add player error:", e);
       alert("選手の登録に失敗しました。\n" + e.message);
@@ -513,20 +590,42 @@ if (!year || !month || !day || !weekday || !name.trim()) {
     }
   }
 
-  const boys = players.filter((p) => p.gender === "男子");
+  const boys  = players.filter((p) => p.gender === "男子");
   const girls = players.filter((p) => p.gender === "女子");
 
-  // 追加: 選手削除
   async function deletePlayer(id) {
     if (!window.confirm("この選手の登録を削除しますか？")) return;
-    try {
-      await deleteDoc(doc(db, "players", id));
-      // ※出欠サブコレクションはそのまま（必要になったら物理削除のロジックを追加）
-    } catch (e) {
+    try { await deleteDoc(doc(db, "players", id)); }
+    catch (e) {
       console.error("delete player error:", e);
       alert("選手の削除に失敗しました。\n" + e.message);
     }
   }
+
+  // ---- ここからメモ機能（state / 関数を追加）----
+  const [memoName, setMemoName] = useState("");
+  const [savingMemo, setSavingMemo] = useState(false);
+
+  async function registerMemo() {
+    const name = memoName.trim();
+    if (!name) { alert("メモ名を入力してください。"); return; }
+    try {
+      setSavingMemo(true);
+      await addDoc(collection(db, "memos"), {
+        name,
+        body: "",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      setMemoName("");
+    } catch (e) {
+      console.error("add memo error:", e);
+      alert("メモの登録に失敗しました。\n" + e.message);
+    } finally {
+      setSavingMemo(false);
+    }
+  }
+  // ---- メモ機能 ここまで ----
 
   return (
     <>
@@ -536,175 +635,69 @@ if (!year || !month || !day || !weekday || !name.trim()) {
       <h2 style={styles.h2}>イベント登録</h2>
       <div className="grid" style={{ display: "grid", gap: 8 }}>
         <div style={styles.row}>
-           <select
-    value={year}
-    onChange={(e) => setYear(e.target.value)}
-    style={styles.select}
-  >
-    <option value="">年</option>
-    {YEAR_OPTIONS.map((y) => (
-      <option key={y} value={y}>{y}年</option>
-    ))}
-  </select>
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            style={styles.select}
-          >
+          <select value={year} onChange={(e)=>setYear(e.target.value)} style={styles.select}>
+            <option value="">年</option>
+            {YEAR_OPTIONS.map((y)=> <option key={y} value={y}>{y}年</option>)}
+          </select>
+          <select value={month} onChange={(e)=>setMonth(e.target.value)} style={styles.select}>
             <option value="">月</option>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <option key={m} value={m}>
-                {m}月
-              </option>
-            ))}
+            {Array.from({length:12},(_,i)=>i+1).map(m=> <option key={m} value={m}>{m}月</option>)}
           </select>
-
-          <select
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-            style={styles.select}
-          >
+          <select value={day} onChange={(e)=>setDay(e.target.value)} style={styles.select}>
             <option value="">日</option>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-              <option key={d} value={d}>
-                {d}日
-              </option>
-            ))}
+            {Array.from({length:31},(_,i)=>i+1).map(d=> <option key={d} value={d}>{d}日</option>)}
           </select>
-
-          <select
-            value={weekday}
-            onChange={(e) => setWeekday(e.target.value)}
-            style={styles.select}
-          >
+          <select value={weekday} onChange={(e)=>setWeekday(e.target.value)} style={styles.select}>
             <option value="">曜日</option>
-            {WEEKDAYS.map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
+            {WEEKDAYS.map(w=> <option key={w} value={w}>{w}</option>)}
           </select>
         </div>
 
-        <input
-          style={styles.input}
-          placeholder="イベント名"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-
+        <input style={styles.input} placeholder="イベント名" value={name} onChange={(e)=>setName(e.target.value)} />
         <button style={styles.btn} onClick={registerEvent} disabled={savingEvent}>
           {savingEvent ? "登録中…" : "登録"}
         </button>
       </div>
-
-
-
 
       <hr style={styles.hr} />
 
       {/* イベント一覧 */}
       <h2 style={styles.h2}>イベント一覧</h2>
       <div style={{ display: "grid", gap: 8 }}>
-        {events.length === 0 && (
-          <div style={{ color: "#999", fontSize: 14 }}>イベントはまだありません</div>
-        )}
-{events.map((evt) => (
-  <div key={evt.id} style={styles.listItem}>
-    {/* 左：小さなグレーの削除ボタン（誤タップ防止のため左＆小さく） */}
-    <button
-      onClick={() => onDeleteEvent(evt.id)}
-      style={styles.btnOutlineSmGray}
-      title="このイベントを削除"
-      aria-label="このイベントを削除"
-    >
-      削除
-    </button>
-
-    {/* 中央：日付＋イベント名（タップでは遷移しない） */}
-    <div
-      style={{
-        flex: 1,
-        minWidth: 0,
-        display: "grid",
-        gap: 2,
-        padding: "0 4px",
-      }}
-    >
-      <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>
-        {formatEventDate(evt)}
-      </span>
-      <span
-        style={{
-          fontSize: 16,
-          fontWeight: 600,
-          lineHeight: 1.4,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {evt.name || ""}
-      </span>
-    </div>
-
-    {/* 右：小さな「詳細」ボタンで詳細ページへ */}
-    <button
-      onClick={() => onOpenDetail(evt.id)}
-      style={styles.btnSm}
-      title="詳細を開く"
-      aria-label="詳細を開く"
-    >
-      詳細
-    </button>
-  </div>
-))}
-
-        
+        {events.length === 0 && <div style={{ color:"#999", fontSize:14 }}>イベントはまだありません</div>}
+        {events.map((evt)=>(
+          <div key={evt.id} style={styles.listItem}>
+            <button onClick={()=>onDeleteEvent(evt.id)} style={styles.btnOutlineSmGray} title="このイベントを削除">削除</button>
+            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+              <span style={{ fontSize:"13pt", lineHeight:1.2 }}>{formatEventDate(evt)}</span>
+              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+                {evt.name || ""}
+              </span>
+            </div>
+            <button onClick={()=>onOpenDetail(evt.id)} style={styles.btnSm} title="詳細を開く">詳細</button>
+          </div>
+        ))}
       </div>
 
       <hr style={styles.hr} />
 
       {/* 選手登録 */}
       <h2 style={styles.h2}>選手登録</h2>
-      <div style={{ fontSize: 14, marginBottom: 8 }}>
+      <div style={{ fontSize:14, marginBottom:8 }}>
         登録合計：<b>男子 {boys.length}名</b> / <b>女子 {girls.length}名</b>
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
-        <input
-          style={styles.input}
-          placeholder="なまえ"
-          maxLength={20}
-          value={pName}
-          onChange={(e) => setPName(e.target.value)}
-        />
+      <div style={{ display:"grid", gap:8 }}>
+        <input style={styles.input} placeholder="なまえ" maxLength={20} value={pName} onChange={(e)=>setPName(e.target.value)} />
         <div style={styles.row}>
-          <select
-            value={pGrade}
-            onChange={(e) => setPGrade(e.target.value)}
-            style={{ ...styles.select, flex: 1 }}
-          >
+          <select value={pGrade} onChange={(e)=>setPGrade(e.target.value)} style={{ ...styles.select, flex:1 }}>
             <option value="">学年</option>
-            {GRADES.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
+            {GRADES.map(g=> <option key={g} value={g}>{g}</option>)}
           </select>
-
-          <select
-            value={pGender}
-            onChange={(e) => setPGender(e.target.value)}
-            style={{ ...styles.select, flex: 1 }}
-          >
+          <select value={pGender} onChange={(e)=>setPGender(e.target.value)} style={{ ...styles.select, flex:1 }}>
             <option value="">性別</option>
-            {GENDERS.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
+            {GENDERS.map(g=> <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
-
         <button style={styles.btn} onClick={registerPlayer} disabled={savingPlayer}>
           {savingPlayer ? "登録中…" : "登録"}
         </button>
@@ -712,51 +705,71 @@ if (!year || !month || !day || !weekday || !name.trim()) {
 
       <hr style={styles.hr} />
 
-      {/* 選手一覧（削除ボタン付き） */}
+      {/* 選手一覧 */}
       <h2 style={styles.h2}>選手一覧</h2>
-
-      <div style={{ display: "grid", gap: 4, marginBottom: 12 }}>
-        <div>
-          <span style={styles.pill}>男子 合計 {boys.length}名</span>
-        </div>
-        {sortPlayersForList(boys).map((p) => (
+      <div style={{ display:"grid", gap:4, marginBottom:12 }}>
+        <div><span style={styles.pill}>男子 合計 {boys.length}名</span></div>
+        {sortPlayersForList(boys).map((p)=>(
           <div key={p.id} style={styles.listItem}>
-            <div style={{ fontSize: 16 }}>
-              <b>{p.grade}年</b> {p.name}
-            </div>
-            <button
-              onClick={() => deletePlayer(p.id)}
-              style={{ ...styles.btnOutline, width: "auto", padding: "6px 10px" }}
-              title="この選手を削除"
-            >
-              削除
-            </button>
+            <div style={{ fontSize:16 }}><b>{p.grade}年</b> {p.name}</div>
+            <button onClick={()=>deletePlayer(p.id)} style={{ ...styles.btnOutline, width:"auto", padding:"6px 10px" }}>削除</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"grid", gap:4 }}>
+        <div><span style={styles.pill}>女子 合計 {girls.length}名</span></div>
+        {sortPlayersForList(girls).map((p)=>(
+          <div key={p.id} style={styles.listItem}>
+            <div style={{ fontSize:16 }}><b>{p.grade}年</b> {p.name}</div>
+            <button onClick={()=>deletePlayer(p.id)} style={{ ...styles.btnOutline, width:"auto", padding:"6px 10px" }}>削除</button>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "grid", gap: 4 }}>
-        <div>
-          <span style={styles.pill}>女子 合計 {girls.length}名</span>
-        </div>
-        {sortPlayersForList(girls).map((p) => (
-          <div key={p.id} style={styles.listItem}>
-            <div style={{ fontSize: 16 }}>
-              <b>{p.grade}年</b> {p.name}
+      {/* ユニフォーム番号管理 */}
+      <div style={{ display:"grid", gap:8, marginTop:8 }}>
+        <button style={styles.btnOutline} onClick={onOpenUniforms} title="ユニフォーム番号とビブス番号を管理">
+          🎽ユニフォーム番号管理
+        </button>
+      </div>
+
+      {/* メモ登録 */}
+      <hr style={styles.hr} />
+      <h2 style={styles.h2}>メモ登録</h2>
+      <div className="grid" style={{ display:"grid", gap:8 }}>
+        <input
+          style={styles.input}
+          placeholder="メモ名（チーム共有情報）"
+          value={memoName}
+          onChange={(e)=>setMemoName(e.target.value)}
+        />
+        <button style={styles.btn} onClick={registerMemo} disabled={savingMemo}>
+          {savingMemo ? "登録中…" : "登録"}
+        </button>
+      </div>
+
+      {/* メモ一覧 */}
+      <hr style={styles.hr} />
+      <h2 style={styles.h2}>メモ一覧</h2>
+      <div style={{ display:"grid", gap:8 }}>
+        {memos.length === 0 && <div style={{ color:"#999", fontSize:14 }}>メモはまだありません</div>}
+        {memos.map((m)=>(
+          <div key={m.id} style={styles.listItem}>
+            <button onClick={()=>onDeleteMemo(m.id)} style={styles.btnOutlineSmGray}>削除</button>
+            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+
+              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+                {m.name || ""}
+              </span>
             </div>
-            <button
-              onClick={() => deletePlayer(p.id)}
-              style={{ ...styles.btnOutline, width: "auto", padding: "6px 10px" }}
-              title="この選手を削除"
-            >
-              削除
-            </button>
+            <button onClick={()=>onOpenMemoDetail(m.id)} style={styles.btnSm}>詳細</button>
           </div>
         ))}
       </div>
     </>
   );
 }
+
 
 // ---------------- Detail Page ----------------
 function DetailPage({ eventId, players, onBack }) {
@@ -857,53 +870,68 @@ function DetailPage({ eventId, players, onBack }) {
     }));
   }
 
-  // 出席・調整中・遅刻・早退を男女別で集計
-  const attendanceSummary = useMemo(() => {
-    const boys = { present: [], adjust: [], late: [], early: [] };
-    const girls = { present: [], adjust: [], late: [], early: [] };
+// 出席・調整中・遅刻・早退・未回答（男女混合）を集計
+const attendanceSummary = useMemo(() => {
+  const boys = { present: [], adjust: [], late: [], early: [] };
+  const girls = { present: [], adjust: [], late: [], early: [] };
+  const unanswered = [];       // 男女まとめの未回答
+  // もし欠席も後で出したければ↓を使う
+  // const absent = [];
 
-    const pushTo = (gender, bucket, item) => {
-      if (gender === "男子") boys[bucket].push(item);
-      if (gender === "女子") girls[bucket].push(item);
-    };
+  const sortFn = (a, b) =>
+    (b.grade || 0) - (a.grade || 0) ||
+    (a.name || "").localeCompare(b.name || "");
 
-    const sortFn = (a, b) =>
-      (b.grade || 0) - (a.grade || 0) ||
-      (a.name || "").localeCompare(b.name || "");
+  const pushTo = (gender, bucket, item) => {
+    if (gender === "男子") boys[bucket].push(item);
+    else if (gender === "女子") girls[bucket].push(item);
+  };
 
-    players.forEach((p) => {
-      const s = uiMap[p.id]?.status || "未回答";
-      const item = { name: p.name, grade: Number(p.grade) || 0 };
+  // ←★ 正規化：空・未定義・不正値は「未回答」に
+  const normalize = (val) => {
+    const s = (val ?? "").toString().trim();
+    const valid = new Set(["未回答","出席","調整中","欠席","早退","遅刻"]);
+    if (!s || !valid.has(s)) return "未回答";
+    return s;
+  };
 
-      if (s === "出席")       pushTo(p.gender, "present", item);
-      else if (s === "調整中") pushTo(p.gender, "adjust",  item);
-      else if (s === "遅刻")   pushTo(p.gender, "late",    item);
-      else if (s === "早退")   pushTo(p.gender, "early",   item);
-    });
+  players.forEach((p) => {
+    const s = normalize(uiMap[p.id]?.status);
+    const item = { name: p.name, grade: Number(p.grade) || 0 };
 
-    [boys.present, boys.adjust, boys.late, boys.early,
-     girls.present, girls.adjust, girls.late, girls.early].forEach(arr => arr.sort(sortFn));
+    if (s === "出席")        pushTo(p.gender, "present", item);
+    else if (s === "調整中") pushTo(p.gender, "adjust",  item);
+    else if (s === "遅刻")   pushTo(p.gender, "late",    item);
+    else if (s === "早退")   pushTo(p.gender, "early",   item);
+    else if (s === "欠席")   { /* absent.push(item); */ }   // ←★ 欠席は未回答に入れない
+    else /* s === "未回答" */ unanswered.push(item);        // ←★ ここだけ未回答
+  });
 
-    const pack = (arr) => ({
-      count: arr.length,
-      names: arr.map(x => x.name),
-    });
+  [boys.present, boys.adjust, boys.late, boys.early,
+   girls.present, girls.adjust, girls.late, girls.early,
+   unanswered /*, absent*/].forEach(arr => arr.sort(sortFn));
 
-    return {
-      boys: {
-        present: pack(boys.present),
-        adjust:  pack(boys.adjust),
-        late:    pack(boys.late),
-        early:   pack(boys.early),
-      },
-      girls: {
-        present: pack(girls.present),
-        adjust:  pack(girls.adjust),
-        late:    pack(girls.late),
-        early:   pack(girls.early),
-      },
-    };
-  }, [uiMap, players]);
+  const pack = (arr) => ({ count: arr.length, names: arr.map(x => x.name) });
+
+  return {
+    boys: {
+      present: pack(boys.present),
+      adjust:  pack(boys.adjust),
+      late:    pack(boys.late),
+      early:   pack(boys.early),
+    },
+    girls: {
+      present: pack(girls.present),
+      adjust:  pack(girls.adjust),
+      late:    pack(girls.late),
+      early:   pack(girls.early),
+    },
+    unanswered: pack(unanswered),
+    // absent: pack(absent),
+  };
+}, [uiMap, players]);
+
+
 
   async function saveAll() {
     // 入力チェック（基本情報）
@@ -1042,6 +1070,20 @@ function DetailPage({ eventId, players, onBack }) {
               {attendReady ? (data.names.length ? data.names.join("、") : "—") : "読み込み中…"}
             </div>
           ))}
+          {/* 1行空けて未回答を表示（男女まとめ） */}
+<div style={{ height: 8 }} />
+<div
+  style={{ display: "block", width: "100%", overflowWrap: "anywhere", wordBreak: "break-word" }}
+>
+  <b>未回答 {(attendanceSummary.unanswered?.count ?? 0)}名：</b>
+  {attendReady
+    ? ((attendanceSummary.unanswered?.names?.length ?? 0) > 0
+        ? attendanceSummary.unanswered.names.join("、")
+        : "—")
+    : "読み込み中…"}
+</div>
+
+
         </div>
 
         {/* 出欠入力の開閉トグル */}
@@ -1249,3 +1291,182 @@ function DetailPage({ eventId, players, onBack }) {
     </div>
   );
 }
+// ---------------- UniformPage Page ----------------
+function UniformPage({ players, onBack }) {
+  // 学年降順（6→1）。同学年は名前の五十音順
+  const byGradeDesc = (a, b) =>
+    (parseInt(b.grade || 0) - parseInt(a.grade || 0)) ||
+    (a.name || "").localeCompare(b.name || "");
+
+  // ローカル編集マップ { playerId: { uniformNo: "00", bibNo: "00" } }
+  const [numMap, setNumMap] = useState({});
+
+  // players から初期値をセット（順序は関係なし）
+  useEffect(() => {
+    const m = {};
+    (players || []).forEach(p => {
+      m[p.id] = {
+        uniformNo: (p.uniformNo ?? "").toString(),
+        bibNo: (p.bibNo ?? "").toString(),
+      };
+    });
+    setNumMap(m);
+  }, [players]);
+
+  // 男女別に 6年→1年 で並べる（ここが今回のポイント）
+  const boys = useMemo(
+    () => [...(players || [])].filter(p => p.gender === "男子").sort(byGradeDesc),
+    [players]
+  );
+  const girls = useMemo(
+    () => [...(players || [])].filter(p => p.gender === "女子").sort(byGradeDesc),
+    [players]
+  );
+
+  // 入力値を2桁の数字に（空は許可）
+  const sanitize = (value) => value.replace(/\D/g, "").slice(0, 2);
+  const pad2 = (s) => (s === "" ? "" : s.padStart(2, "0"));
+
+  const updateField = (pid, key, value) => {
+    setNumMap(prev => ({
+      ...prev,
+      [pid]: { ...(prev[pid] || {}), [key]: sanitize(value) },
+    }));
+  };
+
+  // 保存
+  async function saveAll() {
+    try {
+      const writes = Object.entries(numMap).map(([pid, val]) => {
+        const payload = {};
+        if (val.uniformNo !== undefined) {
+          const v = sanitize(val.uniformNo);
+          payload.uniformNo = v === "" ? "" : pad2(v);
+        }
+        if (val.bibNo !== undefined) {
+          const v = sanitize(val.bibNo);
+          payload.bibNo = v === "" ? "" : pad2(v);
+        }
+        return setDoc(doc(db, "players", pid), payload, { merge: true });
+      });
+      await Promise.all(writes);
+      alert("ユニフォーム／ビブス番号を登録しました");
+    } catch (e) {
+      console.error(e);
+      alert("番号の登録に失敗しました。\n" + e.message);
+    }
+  }
+
+  const renderList = (list, label) => (
+    <div style={{ display: "grid", gap: 6, marginBottom: 16 }}>
+      <div><span style={styles.pill}>{label}</span></div>
+      {list.map((p) => {
+        const cur = numMap[p.id] || { uniformNo: "", bibNo: "" };
+        return (
+          <div key={p.id} style={styles.listItem}>
+            <div style={{ fontSize: 16, flex: 1, minWidth: 0 }}>
+              <b>{p.grade}年</b> {p.name}
+            </div>
+
+            {/* ユニフォーム番号 */}
+            <div style={{ display: "grid", gap: 4, justifyItems: "center" }}>
+              <small style={{ color: "#666" }}>ユニ</small>
+              <input
+                inputMode="numeric"
+                placeholder="00"
+                value={cur.uniformNo}
+                onChange={(e) => updateField(p.id, "uniformNo", e.target.value)}
+                onBlur={(e) =>
+                  updateField(p.id, "uniformNo", pad2(sanitize(e.target.value)))
+                }
+                style={styles.numBox2}
+                aria-label="ユニフォーム番号"
+              />
+            </div>
+
+            {/* ビブス番号 */}
+            <div style={{ display: "grid", gap: 4, justifyItems: "center" }}>
+              <small style={{ color: "#666" }}>ビブス</small>
+              <input
+                inputMode="numeric"
+                placeholder="00"
+                value={cur.bibNo}
+                onChange={(e) => updateField(p.id, "bibNo", e.target.value)}
+                onBlur={(e) =>
+                  updateField(p.id, "bibNo", pad2(sanitize(e.target.value)))
+                }
+                style={styles.numBox2}
+                aria-label="ビブス番号"
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div>
+      <h1 style={styles.h1}>🎽 ユニフォーム番号管理</h1>
+
+      <div style={{ fontSize: 14, marginBottom: 8 }}>
+        表示順：<b>男子 6→1</b> / <b>女子 6→1</b>
+      </div>
+
+      {renderList(boys, "男子")}
+      {renderList(girls, "女子")}
+
+      <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+        <button style={styles.btn} onClick={saveAll}>登録</button>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+      </div>
+    </div>
+  );
+}
+// ---------------- memo Page ----------------
+function MemoDetailPage({ memoId, onBack }) {
+  const [memo, setMemo] = useState(null);
+  const [body, setBody] = useState("");
+
+  useEffect(() => {
+    const ref = doc(db, "memos", memoId);
+    return onSnapshot(ref, (snap) => {
+      const data = { id: snap.id, ...snap.data() };
+      setMemo(data);
+      setBody(data.body || "");
+    });
+  }, [memoId]);
+
+  async function save() {
+    try {
+      await updateDoc(doc(db, "memos", memoId), {
+        body,
+        updatedAt: Date.now(),
+      });
+      alert("登録しました");
+    } catch (e) {
+      console.error(e);
+      alert("保存に失敗しました。\n" + e.message);
+    }
+  }
+
+  if (!memo) return null;
+
+  return (
+    <div>
+      <h1 style={styles.h1}>📝 {memo.name || "メモ"}</h1>
+      <textarea
+        style={{ ...styles.textarea, minHeight: "70vh" }}
+        placeholder="ここに自由に入力"
+        value={body}
+        onChange={(e)=>setBody(e.target.value)}
+      />
+      <div style={{ display:"grid", gap:8, marginTop:16 }}>
+        <button style={styles.btn} onClick={save}>登録</button>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+      </div>
+    </div>
+  );
+}
+
+

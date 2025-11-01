@@ -14,7 +14,7 @@ git pull --rebase origin main # 先に最新を取り込む（重要）
 git push origin main          # プッシュ
 
 
-<h1 style={styles.h1}>🏀イベント管理App</h1>
+<h1 style={styles.h1}>🏀イベント管理AppAA</h1>
 <h1 style={styles.h1}>🏀イベント詳細</h1>
 
 <link rel="icon" type="image/png" href="/ball.png">
@@ -72,6 +72,8 @@ const initialDetail = {
 
 
 export default function App() {
+  throw new Error("TEST: App.jsx はここが表示中の画面で読み込まれている？");
+  console.log("APP BOOT: コンソール到達テスト"); // 👈 これを追加！
   const [fb, setFb] = useState(null);
   const [ready, setReady] = useState(false);
   const [activeEventId, setActiveEventId] = useState(null);

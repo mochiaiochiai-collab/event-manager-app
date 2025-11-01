@@ -108,4 +108,20 @@ export const styles = {
     borderRadius: 999,
     padding: "3px 8px",
   },
+  // styles の中に追記
+numBox2: {
+  width: 48,
+  textAlign: "center",
+  fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+  fontSize: 16,
+  fontWeight: 600,
+  padding: "8px 6px",
+  border: "1px solid #ddd",
+  borderRadius: 10,
+  outline: "none",
+  background: "#fff",
+  color: TEXT,
+  boxSizing: "border-box",
+},
+
 };
