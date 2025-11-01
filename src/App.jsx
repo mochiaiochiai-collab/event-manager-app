@@ -1538,27 +1538,38 @@ function MemoDetailPage({ memoId, onBack }) {
         onChange={(e) => setContent(e.target.value)}
       />
 
-      {/* リンクがあるときだけプレビューを表示 */}
-      {hasLink && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: "10px 12px",
-            border: "1px dashed #dcdcdc",
-            borderRadius: 10,
-            background: "#fafbfd",
-            fontSize: 14,
-            lineHeight: 1.6,
-            whiteSpace: "normal",
-            wordBreak: "break-word",
-          }}
+      {/* リンクだけ抽出してプレビュー表示 */}
+{hasLink && (
+  <div
+    style={{
+      marginTop: 12,
+      padding: "10px 12px",
+      border: "1px dashed #dcdcdc",
+      borderRadius: 10,
+      background: "#fafbfd",
+      fontSize: 14,
+      lineHeight: 1.6,
+      wordBreak: "break-word",
+    }}
+  >
+    <div style={{ fontWeight: 600, marginBottom: 6, color: "#5a6b8a" }}>
+      🔗 含まれるリンク一覧
+    </div>
+    {Array.from(content.matchAll(/https?:\/\/[^\s]+/g)).map((m, i) => (
+      <div key={i}>
+        <a
+          href={m[0]}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ textDecoration: "underline", color: "#0056cc" }}
         >
-          <div style={{ fontWeight: 600, marginBottom: 6, color: "#5a6b8a" }}>
-            🔗 リンクプレビュー
-          </div>
-          {linkify(content)}
-        </div>
-      )}
+          {m[0]}
+        </a>
+      </div>
+    ))}
+  </div>
+)}
+
 
       {/* ボタン群 */}
       <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
