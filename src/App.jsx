@@ -39,6 +39,14 @@ const YEAR_OPTIONS = [THIS_YEAR, THIS_YEAR + 1, THIS_YEAR + 2];
 const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
 const GENDERS = ["男子", "女子"];
 const ATTEND_STATUSES = ["未回答", "出席","調整中","欠席", "早退", "遅刻"];
+const EVENT_CATEGORY_OPTIONS = [
+  { value: "main",  label: "練習・試合関係" },
+  { value: "other", label: "その他イベント" },
+];
+
+const categoryLabel = (val) =>
+  (EVENT_CATEGORY_OPTIONS.find(o => o.value === val)?.label) || "練習・試合関係";
+
 
 // Google Fonts を読み込み
 function useNotoSans() {
@@ -337,8 +345,9 @@ function sortPlayersForList(players) {
 export default function App() {
   useNotoSans();
   
-  const [view, setView] = useState("top"); // "top" | "detail" | "uniforms"
+  const [view, setView] = useState("top"); // "top" | "detail" | "uniforms" | "matrix"
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [matrixYear, setMatrixYear] = useState(null); // 年度の開始年（例：2025年度なら 2025）
   const [memos, setMemos] = useState([]);
   const [selectedMemoId, setSelectedMemoId] = useState(null);
 
@@ -416,11 +425,26 @@ useEffect(() => {
     setView("uniforms");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const goMatrix = (fy) => {
+  setMatrixYear(fy);
+   setView("matrix");
+   window.scrollTo({ top: 0, behavior: "smooth" });
+ };
   const goMemoDetail = (id) => {
   setSelectedMemoId(id);
   setView("memo");
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
+const finishEvent = async (id) => {
+  if (!window.confirm("このイベントを『済』にしますか？\n（出欠表や履歴には残ります）")) return;
+  try {
+    await updateDoc(doc(db, "events", id), { done: true, doneAt: Date.now() });
+  } catch (e) {
+    console.error(e);
+    alert("『済』への変更に失敗しました。\n" + e.message);
+  }
+};
+
 
   return (
     <div style={styles.app} className="eagles-app">
@@ -439,6 +463,9 @@ useEffect(() => {
               events={events}
               players={players}
               memos={memos} 
+              onFinishEvent={finishEvent}   // ★ 追加
+              onOpenMatrix={goMatrix}
+
               onDeleteEvent={async (id) => {
                 if (!window.confirm("このイベントを削除しますか？")) return;
                 try {
@@ -470,6 +497,14 @@ useEffect(() => {
               onBack={backTop}
             />
           )}
+          {view === "matrix" && (
+           <AttendanceMatrixPage
+            players={players}
+             onBack={backTop}
+             defaultFiscalYear={matrixYear}
+            allEvents={events}
+          />
+         )}
                     {view === "uniforms" && (
             <UniformPage
               players={players}
@@ -519,8 +554,11 @@ function TopPage({
   onDeleteEvent,
   onOpenDetail,
   onOpenUniforms,
+  onOpenMatrix,
   onOpenMemoDetail,
-  onDeleteMemo
+  onDeleteMemo,
+  onFinishEvent,      // ★ 追加（済にするボタン用）
+  
 }) {
   // イベント登録フォーム
   const [year, setYear]       = useState("");
@@ -528,6 +566,7 @@ function TopPage({
   const [day, setDay]         = useState("");
   const [weekday, setWeekday] = useState("");
   const [name, setName]       = useState("");
+  const [eventCategory, setEventCategory] = useState("main"); 
   const [savingEvent, setSavingEvent] = useState(false);
 
   async function registerEvent() {
@@ -537,23 +576,27 @@ function TopPage({
     }
     try {
       setSavingEvent(true);
-      await addDoc(collection(db, "events"), {
-        year: Number(year),
-        month: Number(month),
-        day: Number(day),
-        weekday,
-        name: name.trim(),
-        place: "",
-        meetTime: "",
-        detail: "",
-        items: "",
-        coachMemo: "",
-        escortMemo: "",
-        carMemo: "",
-        noteMemo: "",
-        createdAt: Date.now(),
-      });
-      setYear(""); setMonth(""); setDay(""); setWeekday(""); setName("");
+await addDoc(collection(db, "events"), {
+  year: Number(year),
+  month: Number(month),
+  day: Number(day),
+  weekday,
+  name: name.trim(),
+  place: "",
+  meetTime: "",
+  detail: "",
+  items: "",
+  coachMemo: "",
+  escortMemo: "",
+  carMemo: "",
+  noteMemo: "",
+  category: eventCategory || "main",  // ★ 追加
+  createdAt: Date.now(),
+  done: false,          // ★ 追加：未完了
+  doneAt: null,         // ★ 追加：完了日時（ミリ秒）
+});
+setYear(""); setMonth(""); setDay(""); setWeekday(""); setName("");
+setEventCategory("main"); // ★ 追加
     } catch (e) {
       console.error("add event error:", e);
       alert("イベントの登録に失敗しました。\n" + e.message);
@@ -631,6 +674,8 @@ function TopPage({
     <>
       <h1 style={styles.h1}>🏀Eaglesイベント管理App</h1>
 
+       
+
       {/* イベント登録 */}
       <h2 style={styles.h2}>イベント登録</h2>
       <div className="grid" style={{ display: "grid", gap: 8 }}>
@@ -654,30 +699,118 @@ function TopPage({
         </div>
 
         <input style={styles.input} placeholder="イベント名" value={name} onChange={(e)=>setName(e.target.value)} />
+
+
+
+
+        
+        {/* ★ 追加：カテゴリー選択 */}
+<select
+  value={eventCategory}
+  onChange={(e)=>setEventCategory(e.target.value)}
+  style={styles.select}
+>
+  {EVENT_CATEGORY_OPTIONS.map(opt => (
+    <option key={opt.value} value={opt.value}>{opt.label}</option>
+  ))}
+</select>
         <button style={styles.btn} onClick={registerEvent} disabled={savingEvent}>
           {savingEvent ? "登録中…" : "登録"}
         </button>
       </div>
+      {/* 年度の出欠マトリクス */}
+    <div style={{ display:"grid", gap:8, marginTop:8 }}>
+       <button
+         style={styles.btnOutline}
+         onClick={()=>{
+           // “現在月が1〜3月なら前年を年度開始年”、4〜12月なら当年を年度開始年に
+           const now = new Date();
+           const y = now.getMonth()+1 < 4 ? now.getFullYear()-1 : now.getFullYear();
+           // 親の goMatrix を呼ぶ（TopPage の props にはないので、App 側で渡す必要あり）
+           // → 既存 props に追加しましょう
+           // onOpenMatrix(y)
+         }}
+          onClick={()=>{
+  const now = new Date();
+   const y = now.getMonth()+1 < 4 ? now.getFullYear()-1 : now.getFullYear();
+   onOpenMatrix?.(y);
+ }}
+         title="出欠集計（練習・試合関係のみ）"
+       >
+         📊 練習・試合出欠集計
+       </button>
+     </div>
 
       <hr style={styles.hr} />
 
-      {/* イベント一覧 */}
-      <h2 style={styles.h2}>イベント一覧</h2>
-      <div style={{ display: "grid", gap: 8 }}>
-        {events.length === 0 && <div style={{ color:"#999", fontSize:14 }}>イベントはまだありません</div>}
-        {events.map((evt)=>(
-          <div key={evt.id} style={styles.listItem}>
-            <button onClick={()=>onDeleteEvent(evt.id)} style={styles.btnOutlineSmGray} title="このイベントを削除">削除</button>
-            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
-              <span style={{ fontSize:"13pt", lineHeight:1.2 }}>{formatEventDate(evt)}</span>
-              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
-                {evt.name || ""}
-              </span>
-            </div>
-            <button onClick={()=>onOpenDetail(evt.id)} style={styles.btnSm} title="詳細を開く">詳細</button>
-          </div>
-        ))}
+     
+
+     {/* イベント一覧 */}
+<h2 style={styles.h2}>イベント一覧</h2>
+
+
+{(() => {
+  // 未済イベントをカテゴリーで分割
+  const activeMain  = (events || []).filter(e => !e.done && (e.category ?? "main") === "main");
+  
+  const activeOther = (events || []).filter(e => !e.done && (e.category ?? "main") === "other");
+
+  const renderEventRow = (evt) => (
+    <div key={evt.id} style={styles.listItem}>
+      {/* 未済 → 『済』ボタンで下部へ移動 */}
+      <button
+        onClick={() => onFinishEvent?.(evt.id)}
+        style={styles.btnOutlineSmGray}
+        title="このイベントを『済』に移動"
+      >
+        済
+      </button>
+
+      <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+        <span style={{ fontSize:"13pt", lineHeight:1.2 }}>{formatEventDate(evt)}</span>
+        <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+          {evt.name || ""}
+        </span>
+        <small style={{ color:"#7a7a7a" }}>
+          {(evt.category === "other") ? "その他イベント" : "練習・試合関係"}
+        </small>
       </div>
+
+      <button onClick={() => onOpenDetail(evt.id)} style={styles.btnSm} title="詳細を開く">詳細</button>
+    </div>
+  );
+
+  return (
+    <div style={{ display:"grid", gap:16 }}>
+      {/* 練習・試合関係（未済） */}
+      <div>
+        <div style={{ marginBottom:6 }}>
+          <span style={styles.pill}>練習・試合関係 {activeMain.length}件</span>
+        </div>
+        <div style={{ display:"grid", gap:8 }}>
+          {activeMain.length === 0 && (
+            <div style={{ color:"#999", fontSize:14 }}>未済はありません</div>
+          )}
+          {activeMain.map(renderEventRow)}
+        </div>
+      </div>
+
+      {/* その他イベント（未済） */}
+      <div>
+        <div style={{ marginBottom:6 }}>
+          <span style={styles.pill}>その他イベント {activeOther.length}件</span>
+        </div>
+        <div style={{ display:"grid", gap:8 }}>
+          {activeOther.length === 0 && (
+            <div style={{ color:"#999", fontSize:14 }}>未済はありません</div>
+          )}
+          {activeOther.map(renderEventRow)}
+        </div>
+      </div>
+    </div>
+  );
+})()}
+
 
       <hr style={styles.hr} />
 
@@ -765,7 +898,59 @@ function TopPage({
             <button onClick={()=>onOpenMemoDetail(m.id)} style={styles.btnSm}>詳細</button>
           </div>
         ))}
+        {/* ===== 済イベント（メモ一覧の下に格納） ===== */}
+{(() => {
+  const finishedEvents = (events || [])
+    .filter(e => e.done)
+    .sort((a,b) => (b.doneAt || 0) - (a.doneAt || 0));
+
+  return (
+    <details style={{ marginTop: 12 }}>
+      <summary style={{ cursor:"pointer" }}>
+        <span style={styles.pill}>済イベント {finishedEvents.length}件</span>
+        <small style={{ marginLeft: 8, color:"#777" }}>クリックで開閉</small>
+      </summary>
+
+      <div style={{ display:"grid", gap:8, marginTop:8 }}>
+        {finishedEvents.length === 0 && (
+          <div style={{ color:"#999", fontSize:14 }}>済イベントはまだありません</div>
+        )}
+
+        {finishedEvents.map((evt) => (
+          <div key={evt.id} style={styles.listItem}>
+            {/* 済の中だけ『削除』を許可（完全削除） */}
+            <button
+              onClick={async () => {
+                if (!window.confirm("この済イベントを削除しますか？（元に戻せません）")) return;
+                try { await deleteDoc(doc(db, "events", evt.id)); }
+                catch (e) { console.error(e); alert("削除に失敗しました。\n" + e.message); }
+              }}
+              style={styles.btnOutlineSmGray}
+              title="完全削除"
+            >
+              削除
+            </button>
+
+            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+              <span style={{ fontSize:"13pt", lineHeight:1.2 }}>{formatEventDate(evt)}</span>
+              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+                {evt.name || ""}
+              </span>
+              <small style={{ color:"#7a7a7a" }}>
+                {(evt.category === "other") ? "その他イベント" : "練習・試合関係"}（済）
+              </small>
+            </div>
+
+            <button onClick={() => onOpenDetail(evt.id)} style={styles.btnSm}>詳細</button>
+          </div>
+        ))}
       </div>
+    </details>
+  );
+})()}
+
+      </div>
+      
     </>
   );
 }
@@ -835,6 +1020,7 @@ function DetailPage({ eventId, players, onBack }) {
   const [eDay, setEDay] = useState("");
   const [eWeekday, setEWeekday] = useState("");
   const [eName, setEName] = useState("");
+  const [eCategory, setECategory] = useState("main");
 
   useEffect(() => {
     if (!eventData) return;
@@ -854,6 +1040,7 @@ function DetailPage({ eventId, players, onBack }) {
     setEDay(String(eventData.day || ""));
     setEWeekday(eventData.weekday || "");
     setEName(eventData.name || "");
+    setECategory(eventData.category || "main");
   }, [eventData]);
 
   // セレクト変更：未保存編集に積む（UI即時反映）
@@ -950,6 +1137,7 @@ const attendanceSummary = useMemo(() => {
         day: eDay ? Number(eDay) : null,
         weekday: eWeekday || "",
         name: eName.trim(),
+        category: eCategory || "main",
 
         // 付随情報
         place,
@@ -1039,6 +1227,16 @@ const attendanceSummary = useMemo(() => {
             value={eName}
             onChange={(e) => setEName(e.target.value)}
           />
+          {/* カテゴリー選択（練習・試合関係 / その他） */}
+<select
+  style={{ ...styles.select, marginTop: 4 }}
+  value={eCategory}
+  onChange={(e)=>setECategory(e.target.value)}
+>
+  <option value="main">練習・試合関係</option>
+  <option value="other">その他イベント</option>
+</select>
+
         </div>
         {/* 登録/戻る（フッター） */}
       <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
@@ -1576,6 +1774,227 @@ function MemoDetailPage({ memoId, onBack }) {
         <button style={styles.btn} onClick={saveMemo}>登録</button>
         <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
       </div>
+    </div>
+  );
+}
+// ---------------- Attendance Matrix (年度) ----------------
+function AttendanceMatrixPage({ players, onBack, defaultFiscalYear, allEvents }) {
+  // 年度：4月〜翌年3月
+  const thisFY = (() => {
+    const now = new Date();
+    return now.getMonth()+1 < 4 ? now.getFullYear()-1 : now.getFullYear();
+  })();
+  const [fy, setFy] = useState(defaultFiscalYear ?? thisFY);
+
+  // 「練習・試合関係」だけを年度で抽出 → 日付昇順
+  const events = useMemo(() => {
+    const startY = Number(fy);
+    const withinFY = (e) => {
+      const y = Number(e.year || 0);
+      const m = Number(e.month || 0);
+      if (y !== startY && y !== startY+1) return false;
+      if (y === startY)   return m >= 4 && m <= 12;
+      if (y === startY+1) return m >= 1 && m <= 3;
+      return false;
+    };
+    return (allEvents || [])
+      .filter(e => (e.category ?? "main") === "main")
+      .filter(withinFY)
+      .sort((a,b) =>
+        (a.year - b.year) ||
+        (a.month - b.month) ||
+        (a.day - b.day)
+      );
+  }, [allEvents, fy]);
+
+  // 出欠の読み込み（各イベントの attendance サブコレクション）
+  const [attMap, setAttMap] = useState({}); // { eventId: { playerId: status } }
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const map = {};
+        await Promise.all(
+          events.map(async (ev) => {
+            const snap = await getDocs(collection(db, "events", ev.id, "attendance"));
+            const row = {};
+            snap.forEach(d => { row[d.id] = (d.data()?.status ?? "未回答"); });
+            map[ev.id] = row;
+          })
+        );
+        if (!cancelled) setAttMap(map);
+      } catch (e) {
+        console.error(e);
+        alert("出欠表の読み込みに失敗しました。\n" + e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [events]);
+
+  // 並び順：男女 → 学年(降順:6→1) → あいうえお
+  const collator = useMemo(() => new Intl.Collator("ja"), []);
+  const sortForMatrix = (list) =>
+    [...list].sort((a,b) =>
+      (a.gender === b.gender ? 0 : (a.gender === "男子" ? -1 : 1)) ||
+      (parseInt(b.grade) - parseInt(a.grade)) ||
+      collator.compare(a.name || "", b.name || "")
+    );
+
+  const sortedPlayers = useMemo(() => sortForMatrix(players || []), [players]);
+
+  // セル表示用（短縮表記 & 背景色）
+  const statusShort = (s) => {
+    switch (s) {
+      case "出席": return "出";
+      case "調整中": return "調";
+      case "欠席": return "欠";
+      case "遅刻": return "遅";
+      case "早退": return "早";
+      case "未回答":
+      default: return "—";
+    }
+  };
+  const statusStyle = (s) => {
+    switch (s) {
+      case "出席":     return { background:"#E9F2FF", border:"1px solid #C9DFFF" };
+      case "調整中":   return { background:"#F0FFF1", border:"1px solid #D6EFCF" };
+      case "欠席":     return { background:"#FFEAEA", border:"1px solid #FFD1D1" };
+      case "遅刻":
+      case "早退":     return { background:"#FFF7DB", border:"1px solid #F2E5A8" };
+      default:         return { background:"#fff",     border:"1px solid #eee"   };
+    }
+  };
+
+  // 行末の集計（各プレイヤー）
+  function summarizeForPlayer(pid) {
+    let present = 0, late = 0, early = 0, absent = 0, answered = 0;
+    events.forEach(ev => {
+      const s = attMap[ev.id]?.[pid] ?? "未回答";
+      if (s === "出席") present++;
+      else if (s === "遅刻") late++;
+      else if (s === "早退") early++;
+      else if (s === "欠席") absent++;
+      if (s !== "未回答" && s !== "調整中") answered++;
+    });
+    const totalEvents = events.length;
+    const attendedLike = present + late + early; // 率の分子
+    const rate = totalEvents ? `${attendedLike}/${totalEvents}` : "-";
+    return { present, late, early, absent, rate };
+  }
+
+  // ヘッダー：日付の表示
+  const dateLabel = (e) => {
+    const wd = e.weekday ? `(${e.weekday})` : "";
+    return `${e.month}/${e.day}${wd}`;
+  };
+
+  return (
+    <div>
+      <h1 style={styles.h1}>📊 年度の出欠表（練習・試合関係）</h1>
+
+      {/* 年度選択 */}
+      <div style={{ ...styles.row, marginBottom: 8 }}>
+        <select
+          value={fy}
+          onChange={(e)=>setFy(Number(e.target.value))}
+          style={{ ...styles.select, width: 140 }}
+        >
+          {[thisFY-1, thisFY, thisFY+1].map(y => (
+            <option key={y} value={y}>{y}年度（{y}/4〜{y+1}/3）</option>
+          ))}
+        </select>
+        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+      </div>
+
+      <div style={{
+        width:"100%",
+        overflowX:"auto",
+        WebkitOverflowScrolling:"touch",
+        border:"1px solid #eee",
+        borderRadius:12,
+        background:"#fff"
+      }}>
+        <table style={{ borderCollapse:"separate", borderSpacing:0, minWidth: 680 }}>
+          <thead>
+            <tr>
+              <th style={{ position:"sticky", left:0, background:"#fafafa", padding:"8px 10px", borderBottom:"1px solid #eee", textAlign:"left", zIndex:1 }}>
+                選手名
+              </th>
+              {events.map(ev => (
+                <th key={ev.id} style={{ padding:"8px 10px", borderBottom:"1px solid #eee", whiteSpace:"nowrap", fontWeight:600 }}>
+                  {dateLabel(ev)}
+                </th>
+              ))}
+              {/* 行末の集計カラム */}
+              {["出席","遅刻","早退","欠席","出席率"].map(h=>(
+                <th key={h} style={{ padding:"8px 10px", borderLeft:"1px solid #f0f0f0", borderBottom:"1px solid #eee", whiteSpace:"nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {/* 男女区切りの小見出し行（見やすく） */}
+            {["男子","女子"].map(gender => (
+              <React.Fragment key={gender}>
+                <tr>
+                  <td colSpan={events.length + 5} style={{ background:"#f7f9fc", color:"#3b5dab", fontWeight:700, padding:"6px 10px", position:"sticky", left:0 }}>
+                    {gender}
+                  </td>
+                </tr>
+
+                {sortedPlayers.filter(p=>p.gender===gender).map(p=>{
+                  const sum = summarizeForPlayer(p.id);
+                  return (
+                    <tr key={p.id}>
+                      <td
+                        style={{
+                          position:"sticky", left:0, background:"#fff", padding:"8px 10px",
+                          borderBottom:"1px solid #f5f5f5", whiteSpace:"nowrap", fontWeight:600
+                        }}
+                        title={`${p.grade}年 ${p.name}`}
+                      >
+                        <b>{p.grade}年</b> {p.name}
+                      </td>
+
+                      {events.map(ev=>{
+                        const s = attMap[ev.id]?.[p.id] ?? "未回答";
+                        const st = statusStyle(s);
+                        return (
+                          <td key={ev.id+"-"+p.id} style={{
+                            padding:"6px 8px", textAlign:"center",
+                            borderBottom:"1px solid #f7f7f7",
+                            ...st
+                          }}>
+                            {statusShort(s)}
+                          </td>
+                        );
+                      })}
+
+                      {/* 行末の集計 */}
+                      <td style={{ padding:"6px 10px", textAlign:"right", borderLeft:"1px solid #f0f0f0" }}>{sum.present}</td>
+                      <td style={{ padding:"6px 10px", textAlign:"right" }}>{sum.late}</td>
+                      <td style={{ padding:"6px 10px", textAlign:"right" }}>{sum.early}</td>
+                      <td style={{ padding:"6px 10px", textAlign:"right" }}>{sum.absent}</td>
+                      <td style={{ padding:"6px 10px", textAlign:"right", fontWeight:700 }}>{sum.rate}</td>
+                    </tr>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop:8, fontSize:12, color:"#666" }}>
+        表示対象：{fy}年4月〜{fy+1}年3月／「練習・試合関係」カテゴリーのイベントのみ。セル略記：出=出席／調=調整中／欠=欠席／遅=遅刻／早=早退／—=未回答
+      </div>
+
+      {loading && <div style={{ marginTop:8, color:"#999" }}>読み込み中…</div>}
     </div>
   );
 }
