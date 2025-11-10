@@ -40,12 +40,13 @@ const GRADES = ["1年", "2年", "3年", "4年", "5年", "6年"];
 const GENDERS = ["男子", "女子"];
 const ATTEND_STATUSES = ["未回答", "出席","調整中","欠席", "早退", "遅刻"];
 const EVENT_CATEGORY_OPTIONS = [
-  { value: "main",  label: "練習・試合関係" },
+  { value: "main",  label: "試合関係練習・（出欠集計対象）" },
   { value: "other", label: "その他イベント" },
 ];
 
+
 const categoryLabel = (val) =>
-  (EVENT_CATEGORY_OPTIONS.find(o => o.value === val)?.label) || "練習・試合関係";
+  (EVENT_CATEGORY_OPTIONS.find(o => o.value === val)?.label) || "練習・試合関係（出欠集計対象）";
 
 
 // Google Fonts を読み込み
@@ -572,7 +573,7 @@ function TopPage({
   const [day, setDay]         = useState("");
   const [weekday, setWeekday] = useState("");
   const [name, setName]       = useState("");
-  const [eventCategory, setEventCategory] = useState("main"); 
+  const [eventCategory, setEventCategory] = useState(""); 
   const [savingEvent, setSavingEvent] = useState(false);
 
   async function registerEvent() {
@@ -678,11 +679,56 @@ setEventCategory("main"); // ★ 追加
 
   return (
     <>
-      <h1 style={styles.h1}>🏀Eaglesイベント管理App</h1>
+<h1
+  style={{
+    fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+    fontSize: 22,
+    fontWeight: 700,
+    color: "rgba(255, 255, 255, 1)",
+    textAlign: "center",
+    background: "#006affff",
+    borderRadius: 12,
+    padding: "20px 0",
+    marginBottom: 20,
+  }}
+>
+  🏀 Eagles イベント管理アプリ
+</h1>
 
-       
 
-      {/* イベント登録 */}
+      {/* ▼ タイトル下に余白を追加 */}
+      <div style={{ height: 16 }} />
+
+      {/* 1) 出欠集計ボタン */}
+      <div style={{ display:"grid", gap:8, marginTop:8 }}>
+        <button
+          style={styles.btnOutline}
+          onClick={()=>{
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth() + 1;
+            onOpenMatrix?.(y, m);
+          }}
+          title="月単位の出欠集計（練習・試合関係のみ）"
+        >
+          📅 練習・試合出欠集計（月）
+        </button>
+      </div>
+
+      {/* 2) ユニフォーム管理ボタン */}
+      <div style={{ display:"grid", gap:8, marginTop:8 }}>
+        <button
+          style={styles.btnOutline}
+          onClick={onOpenUniforms}
+          title="ユニフォーム番号とビブス番号を管理"
+        >
+          🎽ユニフォーム番号管理
+        </button>
+      </div>
+
+      <hr style={styles.hr} />
+
+      {/* 3) イベント登録 */}
       <h2 style={styles.h2}>イベント登録</h2>
       <div className="grid" style={{ display: "grid", gap: 8 }}>
         <div style={styles.row}>
@@ -704,116 +750,192 @@ setEventCategory("main"); // ★ 追加
           </select>
         </div>
 
-        <input style={styles.input} placeholder="イベント名" value={name} onChange={(e)=>setName(e.target.value)} />
+        <input
+          style={styles.input}
+          placeholder="イベント名"
+          value={name}
+          onChange={(e)=>setName(e.target.value)}
+        />
 
-
-
-
-        
-        {/* ★ 追加：カテゴリー選択 */}
 <select
   value={eventCategory}
   onChange={(e)=>setEventCategory(e.target.value)}
   style={styles.select}
 >
+  <option value="">イベントタイプを選ぶ▼</option>
   {EVENT_CATEGORY_OPTIONS.map(opt => (
     <option key={opt.value} value={opt.value}>{opt.label}</option>
   ))}
 </select>
+
         <button style={styles.btn} onClick={registerEvent} disabled={savingEvent}>
           {savingEvent ? "登録中…" : "登録"}
         </button>
       </div>
-      {/* ★月集計リセット2：月別の出欠マトリクス */}
-    <div style={{ display:"grid", gap:8, marginTop:8 }}>
-       <button
-          style={styles.btnOutline}
-          onClick={()=>{
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = now.getMonth() + 1;
-            onOpenMatrix?.(y, m);   // 月別へ
-          }}
-          title="月単位の出欠集計（練習・試合関係のみ）"
-        >
-          📅 練習・試合出欠集計（月）
+
+      <hr style={styles.hr} />
+
+      {/* 4) イベント一覧 */}
+      <h2 style={styles.h2}>イベント一覧</h2>
+      {(() => {
+        const activeMain  = (events || []).filter(e => !e.done && (e.category ?? "main") === "main");
+        const activeOther = (events || []).filter(e => !e.done && (e.category ?? "main") === "other");
+
+        const renderEventRow = (evt) => (
+          <div key={evt.id} style={styles.listItem}>
+            <button
+              onClick={() => onFinishEvent?.(evt.id)}
+              style={styles.btnOutlineSmGray}
+              title="このイベントを『済』に移動"
+            >
+              済
+            </button>
+
+            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+              <span style={{ fontSize:"13pt", lineHeight:1.2 }}>{formatEventDate(evt)}</span>
+              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+                {evt.name || ""}
+              </span>
+              <small style={{ color:"#7a7a7a" }}>
+                {(evt.category === "other") ? "その他イベント" : "練習・試合関係（出欠集計対象）"}
+              </small>
+            </div>
+
+            <button onClick={() => onOpenDetail(evt.id)} style={styles.btnSm} title="詳細を開く">詳細</button>
+          </div>
+        );
+
+        return (
+          <div style={{ display:"grid", gap:16 }}>
+            {/* 練習・試合関係 */}
+            <div>
+              <div style={{ marginBottom:6 }}>
+                <span style={styles.pill}>練習・試合関係 （出欠集計対象）{activeMain.length}件</span>
+              </div>
+              <div style={{ display:"grid", gap:8 }}>
+                {activeMain.length === 0 && (
+                  <div style={{ color:"#999", fontSize:14 }}>未済はありません</div>
+                )}
+                {activeMain.map(renderEventRow)}
+              </div>
+            </div>
+
+            {/* その他イベント */}
+            <div>
+              <div style={{ marginBottom:6 }}>
+                <span style={styles.pill}>その他イベント {activeOther.length}件</span>
+              </div>
+              <div style={{ display:"grid", gap:8 }}>
+                {activeOther.length === 0 && (
+                  <div style={{ color:"#999", fontSize:14 }}>未済はありません</div>
+                )}
+                {activeOther.map(renderEventRow)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 済イベント（そのまま下に） */}
+      <div style={{ marginTop: 12 }}>
+        {(() => {
+          const finishedEvents = (events || [])
+            .filter(e => e.done)
+            .sort((a,b) => (b.doneAt || 0) - (a.doneAt || 0));
+
+          return (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor:"pointer" }}>
+                <span style={styles.pill}>済イベント {finishedEvents.length}件</span>
+                <small style={{ marginLeft: 8, color:"#777" }}>クリックで開閉</small>
+              </summary>
+
+              <div style={{ display:"grid", gap:8, marginTop:8 }}>
+                {finishedEvents.length === 0 && (
+                  <div style={{ color:"#999", fontSize:14 }}>済イベントはまだありません</div>
+                )}
+                {finishedEvents.map((evt) => (
+                  <div key={evt.id} style={{ ...styles.listItem, alignItems: "flex-start", flexWrap: "nowrap" }}>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("この済イベントを削除しますか？（元に戻せません）")) return;
+                        try { await deleteDoc(doc(db, "events", evt.id)); }
+                        catch (e) { alert("削除に失敗しました。\n" + e.message); }
+                      }}
+                      style={styles.btnOutlineSmGray}
+                    >削除</button>
+
+                    <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 2, padding: "0 4px" }}>
+                      <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>{formatEventDate(evt)}</span>
+                      <span style={{ fontSize: 16, fontWeight: 600 }}>{evt.name || ""}</span>
+                      <small style={{ color: "#7a7a7a" }}>
+                        {(evt.category === "other" ? "その他イベント" : "練習・試合関係（出欠集計対象）") + "（済）"}
+                      </small>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("このイベントを『未済』に戻しますか？")) return;
+                          try { await updateDoc(doc(db, "events", evt.id), { done: false, doneAt: null }); }
+                          catch (e) { alert("『未済』への変更に失敗しました。\n" + e.message); }
+                        }}
+                        style={{
+                          ...styles.btnOutlineSmGray,
+                          background: "#EAF3FF",
+                          borderColor: "#C3DBFF",
+                          color: "#2577ff",
+                          fontSize: 12,
+                          padding: "4px 8px",
+                        }}
+                      >戻す</button>
+                      <button onClick={() => onOpenDetail(evt.id)} style={{ ...styles.btnSm, fontSize: 13, padding: "6px 8px" }}>詳細</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          );
+        })()}
+      </div>
+
+      <hr style={styles.hr} />
+
+      {/* 5) メモ登録 */}
+      <h2 style={styles.h2}>メモ登録</h2>
+      <div className="grid" style={{ display:"grid", gap:8 }}>
+        <input
+          style={styles.input}
+          placeholder="メモ名（チーム共有情報）"
+          value={memoName}
+          onChange={(e)=>setMemoName(e.target.value)}
+        />
+        <button style={styles.btn} onClick={registerMemo} disabled={savingMemo}>
+          {savingMemo ? "登録中…" : "登録"}
         </button>
-     </div>
+      </div>
+
+      {/* 6) メモ一覧 */}
+      <hr style={styles.hr} />
+      <h2 style={styles.h2}>メモ一覧</h2>
+      <div style={{ display:"grid", gap:8 }}>
+        {memos.length === 0 && <div style={{ color:"#999", fontSize:14 }}>メモはまだありません</div>}
+        {memos.map((m)=>(
+          <div key={m.id} style={styles.listItem}>
+            <button onClick={()=>onDeleteMemo(m.id)} style={styles.btnOutlineSmGray}>削除</button>
+            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+                {m.name || ""}
+              </span>
+            </div>
+            <button onClick={()=>onOpenMemoDetail(m.id)} style={styles.btnSm}>詳細</button>
+          </div>
+        ))}
+      </div>
 
       <hr style={styles.hr} />
 
-     
-
-     {/* イベント一覧 */}
-<h2 style={styles.h2}>イベント一覧</h2>
-
-
-{(() => {
-  // 未済イベントをカテゴリーで分割
-  const activeMain  = (events || []).filter(e => !e.done && (e.category ?? "main") === "main");
-  
-  const activeOther = (events || []).filter(e => !e.done && (e.category ?? "main") === "other");
-
-  const renderEventRow = (evt) => (
-    <div key={evt.id} style={styles.listItem}>
-      {/* 未済 → 『済』ボタンで下部へ移動 */}
-      <button
-        onClick={() => onFinishEvent?.(evt.id)}
-        style={styles.btnOutlineSmGray}
-        title="このイベントを『済』に移動"
-      >
-        済
-      </button>
-
-      <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
-        <span style={{ fontSize:"13pt", lineHeight:1.2 }}>{formatEventDate(evt)}</span>
-        <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
-          {evt.name || ""}
-        </span>
-        <small style={{ color:"#7a7a7a" }}>
-          {(evt.category === "other") ? "その他イベント" : "練習・試合関係"}
-        </small>
-      </div>
-
-      <button onClick={() => onOpenDetail(evt.id)} style={styles.btnSm} title="詳細を開く">詳細</button>
-    </div>
-  );
-
-  return (
-    <div style={{ display:"grid", gap:16 }}>
-      {/* 練習・試合関係（未済） */}
-      <div>
-        <div style={{ marginBottom:6 }}>
-          <span style={styles.pill}>練習・試合関係 {activeMain.length}件</span>
-        </div>
-        <div style={{ display:"grid", gap:8 }}>
-          {activeMain.length === 0 && (
-            <div style={{ color:"#999", fontSize:14 }}>未済はありません</div>
-          )}
-          {activeMain.map(renderEventRow)}
-        </div>
-      </div>
-
-      {/* その他イベント（未済） */}
-      <div>
-        <div style={{ marginBottom:6 }}>
-          <span style={styles.pill}>その他イベント {activeOther.length}件</span>
-        </div>
-        <div style={{ display:"grid", gap:8 }}>
-          {activeOther.length === 0 && (
-            <div style={{ color:"#999", fontSize:14 }}>未済はありません</div>
-          )}
-          {activeOther.map(renderEventRow)}
-        </div>
-      </div>
-    </div>
-  );
-})()}
-
-
-      <hr style={styles.hr} />
-
-      {/* 選手登録 */}
+      {/* 7) 選手登録 */}
       <h2 style={styles.h2}>選手登録</h2>
       <div style={{ fontSize:14, marginBottom:8 }}>
         登録合計：<b>男子 {boys.length}名</b> / <b>女子 {girls.length}名</b>
@@ -837,7 +959,7 @@ setEventCategory("main"); // ★ 追加
 
       <hr style={styles.hr} />
 
-      {/* 選手一覧 */}
+      {/* 8) 選手一覧 */}
       <h2 style={styles.h2}>選手一覧</h2>
       <div style={{ display:"grid", gap:4, marginBottom:12 }}>
         <div><span style={styles.pill}>男子 合計 {boys.length}名</span></div>
@@ -858,177 +980,139 @@ setEventCategory("main"); // ★ 追加
         ))}
       </div>
 
-      {/* ユニフォーム番号管理 */}
-      <div style={{ display:"grid", gap:8, marginTop:8 }}>
-        <button style={styles.btnOutline} onClick={onOpenUniforms} title="ユニフォーム番号とビブス番号を管理">
-          🎽ユニフォーム番号管理
-        </button>
-      </div>
+            <hr style={styles.hr} />
 
-      {/* メモ登録 */}
-      <hr style={styles.hr} />
-      <h2 style={styles.h2}>メモ登録</h2>
-      <div className="grid" style={{ display:"grid", gap:8 }}>
-        <input
-          style={styles.input}
-          placeholder="メモ名（チーム共有情報）"
-          value={memoName}
-          onChange={(e)=>setMemoName(e.target.value)}
-        />
-        <button style={styles.btn} onClick={registerMemo} disabled={savingMemo}>
-          {savingMemo ? "登録中…" : "登録"}
-        </button>
-      </div>
+      {/* 済イベント一覧（トグル） */}
+      <h2 style={styles.h2}>済イベント一覧</h2>
+      {(() => {
+        const finishedEvents = (events || [])
+          .filter(e => e.done)
+          .sort((a,b) => (b.doneAt || 0) - (a.doneAt || 0));
 
-      {/* メモ一覧 */}
-      <hr style={styles.hr} />
-      <h2 style={styles.h2}>メモ一覧</h2>
-      <div style={{ display:"grid", gap:8 }}>
-        {memos.length === 0 && <div style={{ color:"#999", fontSize:14 }}>メモはまだありません</div>}
-        {memos.map((m)=>(
-          <div key={m.id} style={styles.listItem}>
-            <button onClick={()=>onDeleteMemo(m.id)} style={styles.btnOutlineSmGray}>削除</button>
-            <div style={{ flex:1, minWidth:0, display:"grid", gap:2, padding:"0 4px" }}>
+        return (
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor:"pointer" }}>
+              <span style={styles.pill}>済イベント {finishedEvents.length}件</span>
+              <small style={{ marginLeft: 8, color:"#777" }}>クリックで開閉</small>
+            </summary>
 
-              <span style={{ fontSize:16, fontWeight:600, lineHeight:1.4, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
-                {m.name || ""}
-              </span>
+            <div style={{ display:"grid", gap:8, marginTop:8 }}>
+              {finishedEvents.length === 0 && (
+                <div style={{ color:"#999", fontSize:14 }}>済イベントはまだありません</div>
+              )}
+
+              {finishedEvents.map((evt) => (
+                <div
+                  key={evt.id}
+                  style={{
+                    ...styles.listItem,
+                    alignItems: "flex-start",
+                    flexWrap: "nowrap",
+                  }}
+                >
+                  {/* 左：削除ボタン */}
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm("この済イベントを削除しますか？（元に戻せません）")) return;
+                      try {
+                        await deleteDoc(doc(db, "events", evt.id));
+                      } catch (e) {
+                        console.error(e);
+                        alert("削除に失敗しました。\n" + e.message);
+                      }
+                    }}
+                    style={styles.btnOutlineSmGray}
+                    title="完全削除"
+                  >
+                    削除
+                  </button>
+
+                  {/* 中央：イベント情報 */}
+                  <div
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: "grid",
+                      gap: 2,
+                      padding: "0 4px",
+                    }}
+                  >
+                    <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>
+                      {formatEventDate(evt)}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 600,
+                        lineHeight: 1.4,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {evt.name || ""}
+                    </span>
+                    <small style={{ color: "#7a7a7a" }}>
+                      {(evt.category === "other"
+                        ? "その他イベント"
+                        : "練習・試合関係（出欠集計対象）") + "（済）"}
+                    </small>
+                  </div>
+
+                  {/* 右：縦並びボタン（戻す・詳細） */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 4,
+                    }}
+                  >
+                    {/* 未済に戻す */}
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("このイベントを『未済』に戻しますか？")) return;
+                        try {
+                          await updateDoc(doc(db, "events", evt.id), {
+                            done: false,
+                            doneAt: null,
+                          });
+                        } catch (e) {
+                          console.error(e);
+                          alert("『未済』への変更に失敗しました。\n" + e.message);
+                        }
+                      }}
+                      style={{
+                        ...styles.btnOutlineSmGray,
+                        background: "#EAF3FF",
+                        borderColor: "#C3DBFF",
+                        color: "#2577ff",
+                        fontSize: 12,
+                        padding: "4px 8px",
+                      }}
+                      title="未済に戻す"
+                    >
+                      戻す
+                    </button>
+
+                    {/* 詳細ボタン */}
+                    <button
+                      onClick={() => onOpenDetail(evt.id)}
+                      style={{ ...styles.btnSm, fontSize: 13, padding: "6px 8px" }}
+                    >
+                      詳細
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <button onClick={()=>onOpenMemoDetail(m.id)} style={styles.btnSm}>詳細</button>
-          </div>
-        ))}
-        {/* ===== 済イベント（メモ一覧の下に格納） ===== */}
-{(() => {
-  const finishedEvents = (events || [])
-    .filter(e => e.done)
-    .sort((a,b) => (b.doneAt || 0) - (a.doneAt || 0));
+          </details>
+        );
+      })()}
 
-  return (
-    <details style={{ marginTop: 12 }}>
-      <summary style={{ cursor:"pointer" }}>
-        <span style={styles.pill}>済イベント {finishedEvents.length}件</span>
-        <small style={{ marginLeft: 8, color:"#777" }}>クリックで開閉</small>
-      </summary>
-
-      <div style={{ display:"grid", gap:8, marginTop:8 }}>
-        {finishedEvents.length === 0 && (
-          <div style={{ color:"#999", fontSize:14 }}>済イベントはまだありません</div>
-        )}
-
-{finishedEvents.map((evt) => (
-  <div
-    key={evt.id}
-    style={{
-      ...styles.listItem,
-      alignItems: "flex-start",
-      flexWrap: "nowrap",
-    }}
-  >
-    {/* 左側：削除ボタン */}
-    <button
-      onClick={async () => {
-        if (!window.confirm("この済イベントを削除しますか？（元に戻せません）")) return;
-        try {
-          await deleteDoc(doc(db, "events", evt.id));
-        } catch (e) {
-          console.error(e);
-          alert("削除に失敗しました。\n" + e.message);
-        }
-      }}
-      style={styles.btnOutlineSmGray}
-      title="完全削除"
-    >
-      削除
-    </button>
-
-    {/* 中央：イベント情報 */}
-    <div
-      style={{
-        flex: 1,
-        minWidth: 0,
-        display: "grid",
-        gap: 2,
-        padding: "0 4px",
-      }}
-    >
-      <span style={{ fontSize: "13pt", lineHeight: 1.2 }}>
-        {formatEventDate(evt)}
-      </span>
-      <span
-        style={{
-          fontSize: 16,
-          fontWeight: 600,
-          lineHeight: 1.4,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {evt.name || ""}
-      </span>
-      <small style={{ color: "#7a7a7a" }}>
-        {(evt.category === "other"
-          ? "その他イベント"
-          : "練習・試合関係") + "（済）"}
-      </small>
-    </div>
-
-    {/* 右側：ボタン縦配置（戻す・詳細） */}
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-end",
-        gap: 4,
-      }}
-    >
-      {/* 上：戻すボタン */}
-      <button
-        onClick={async () => {
-          if (!window.confirm("このイベントを『未済』に戻しますか？")) return;
-          try {
-            await updateDoc(doc(db, "events", evt.id), {
-              done: false,
-              doneAt: null,
-            });
-          } catch (e) {
-            console.error(e);
-            alert("『未済』への変更に失敗しました。\n" + e.message);
-          }
-        }}
-        style={{
-          ...styles.btnOutlineSmGray,
-          background: "#EAF3FF",
-          borderColor: "#C3DBFF",
-          color: "#2577ff",
-          fontSize: 12,
-          padding: "4px 8px",
-        }}
-        title="未済に戻す"
-      >
-        戻す
-      </button>
-
-      {/* 下：詳細ボタン */}
-      <button
-        onClick={() => onOpenDetail(evt.id)}
-        style={{ ...styles.btnSm, fontSize: 13, padding: "6px 8px" }}
-      >
-        詳細
-      </button>
-    </div>
-  </div>
-))}
-
-
-      </div>
-    </details>
-  );
-})()}
-
-      </div>
-      
     </>
   );
+
+
 }
 
 
@@ -1309,7 +1393,7 @@ const attendanceSummary = useMemo(() => {
   value={eCategory}
   onChange={(e)=>setECategory(e.target.value)}
 >
-  <option value="main">練習・試合関係</option>
+  <option value="main">練習・試合関係（出欠集計対象）</option>
   <option value="other">その他イベント</option>
 </select>
 
@@ -1443,21 +1527,21 @@ const attendanceSummary = useMemo(() => {
 
       <h2 style={styles.h2}>参加コーチ名</h2>
       <textarea
-        style={{ ...styles.textarea, minHeight: 100 }}
+        style={{ ...styles.textarea, minHeight: 200 }}
         placeholder="コーチ"
         value={coachMemo}
         onChange={(e) => setCoachMemo(e.target.value)}
       />
       <h2 style={styles.h2}>引率保護者名</h2>
       <textarea
-        style={{ ...styles.textarea, minHeight: 100 }}
+        style={{ ...styles.textarea, minHeight: 200 }}
         placeholder="引率"
         value={escortMemo}
         onChange={(e) => setEscortMemo(e.target.value)}
       />
       <h2 style={styles.h2}>配車OK</h2>
       <textarea
-        style={{ ...styles.textarea, minHeight: 100 }}
+        style={{ ...styles.textarea, minHeight: 200 }}
         placeholder="配車"
         value={carMemo}
         onChange={(e) => setCarMemo(e.target.value)}
