@@ -1155,13 +1155,20 @@ const attendanceSummary = useMemo(() => {
 
 
 
-  async function saveAll() {
+    async function saveAll() {
     // 入力チェック（基本情報）
     if (!eMonth || !eDay || !eWeekday || !eName.trim()) {
       const ok = window.confirm(
         "日付またはイベント名が未入力です。このまま保存しますか？（未入力のままでも保存はできます）"
       );
       if (!ok) return;
+    }
+
+    // ★ 追加：最終確認ダイアログ
+    const ok = window.confirm("この内容で登録しますか？");
+    if (!ok) {
+      // 「いいえ」のときは何も保存せず、この画面にとどまる
+      return;
     }
 
     try {
@@ -1197,6 +1204,7 @@ const attendanceSummary = useMemo(() => {
       alert("保存に失敗しました。\n" + e.message);
     }
   }
+
 
   if (!eventData) return null;
 
