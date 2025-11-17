@@ -1882,22 +1882,102 @@ function AttendanceMatrixPage({ players, onBack, defaultYM, allEvents }) {
     (s==="遅刻"||s==="早退") ? { background:"#FFF7DB", border:"1px solid #F2E5A8" } :
     { background:"#fff", border:"1px solid #eee" };
 
-  // 行末集計（分数＋％）
-  function summarizeForPlayer(pid) {
-    let present=0, late=0, early=0, absent=0;
-    events.forEach(ev => {
-      const s = attMap[ev.id]?.[pid] ?? "未回答";
-      if (s==="出席") present++;
-      else if (s==="遅刻") late++;
-      else if (s==="早退") early++;
-      else if (s==="欠席") absent++;
-    });
-    const total = events.length;
-    const attendedLike = present + late + early; // 出席率の分子
-    const frac = total ? `${attendedLike}/${total}` : "-";
-    const pct  = total ? Math.round((attendedLike/total)*100) + "%" : "-";
-    return { present, late, early, absent, frac, pct };
+      // ★ 集計表から直接ステータスを変更する
+  async function updateStatus(evId, player, newStatus) {
+    const prevStatus = attMap[evId]?.[player.id] ?? "未回答";
+    if (prevStatus === newStatus) return; // 変化なしなら何もしない
+
+    try {
+      await setDoc(
+        doc(db, "events", evId, "attendance", player.id),
+        { status: newStatus },
+        { merge: true }
+      );
+
+      // 画面側の状態も即時反映
+      setAttMap((prev) => ({
+        ...prev,
+        [evId]: {
+          ...(prev[evId] || {}),
+          [player.id]: newStatus,
+        },
+      }));
+    } catch (e) {
+      console.error(e);
+      alert("出欠の更新に失敗しました。\n" + e.message);
+    }
   }
+
+
+      // ★ クリックで出欠を1つ先のステータスに進める
+  function nextStatus(current) {
+    const base = current || "未回答";
+    const idx = ATTEND_STATUSES.indexOf(base);
+    if (idx === -1) return ATTEND_STATUSES[0];
+    const nextIdx = (idx + 1) % ATTEND_STATUSES.length;
+    return ATTEND_STATUSES[nextIdx];
+  }
+
+  async function toggleStatus(evId, player) {
+    const current = attMap[evId]?.[player.id] ?? "未回答";
+    const newStatus = nextStatus(current);
+
+    const ok = window.confirm(
+      `${player.grade}年 ${player.name} の出欠を「${current}」から「${newStatus}」に変更しますか？`
+    );
+    if (!ok) return;
+
+    try {
+      await setDoc(
+        doc(db, "events", evId, "attendance", player.id),
+        { status: newStatus },
+        { merge: true }
+      );
+
+      // ローカル状態も更新（再読み込みなしで反映）
+      setAttMap((prev) => ({
+        ...prev,
+        [evId]: {
+          ...(prev[evId] || {}),
+          [player.id]: newStatus,
+        },
+      }));
+    } catch (e) {
+      console.error(e);
+      alert("出欠の更新に失敗しました。\n" + e.message);
+    }
+  }
+
+
+  // 行末集計（分数＋％）
+function summarizeForPlayer(pid) {
+  let present = 0, late = 0, early = 0, absent = 0, answered = 0;
+
+  events.forEach(ev => {
+    const s = attMap[ev.id]?.[pid] ?? "未回答";
+
+    if (s === "未回答") {
+      // 何もしない（分母にも入れない）
+      return;
+    }
+
+    answered++; // ★ 未回答以外は分母に入れる
+
+    if (s === "出席") present++;
+    else if (s === "遅刻") late++;
+    else if (s === "早退") early++;
+    else if (s === "欠席") absent++;
+  });
+
+  const attendedLike = present + late + early; // 分子（出席扱い）
+  const total = answered;                      // ★ 未回答を除外した分母
+
+  const frac = total ? `${attendedLike}/${total}` : "-";
+  const pct = total ? Math.round((attendedLike / total) * 100) + "%" : "-";
+
+  return { present, late, early, absent, frac, pct };
+}
+
 
   return (
     <div>
@@ -1910,7 +1990,22 @@ function AttendanceMatrixPage({ players, onBack, defaultYM, allEvents }) {
         <select value={m} onChange={(e)=>setM(Number(e.target.value))} style={{ ...styles.select, width:100 }}>
           {Array.from({length:12},(_,i)=>i+1).map(mm => <option key={mm} value={mm}>{mm}月</option>)}
         </select>
-        <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
+        
+        {/* ★ 集計の注意書き（オレンジ文字） */}
+<div
+  style={{
+    marginTop: 12,
+    color: "#ff8c00",       // オレンジ色
+    fontSize: 14,           // 選手名と同じぐらい
+    lineHeight: 1.6,
+    whiteSpace: "pre-wrap",
+  }}
+>
+  ＊鍵当番が練習の最後に選手の出席状況が事前出欠確認とあっているかを確認し、違っていれば正しいものに修正する。
+  {"\n"}
+  ＊「－」は未入部やチームからの休み指示などの時に使用。（出欠集計の分母に入らない）
+</div>
+<button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button>
       </div>
 
       <div style={{ width:"100%", overflowX:"auto", border:"1px solid #eee", borderRadius:12, background:"#fff" }}>
@@ -1945,14 +2040,41 @@ function AttendanceMatrixPage({ players, onBack, defaultYM, allEvents }) {
                       <td style={{ position:"sticky", left:0, background:"#fff", padding:"8px 10px", borderBottom:"1px solid #f5f5f5", whiteSpace:"nowrap", fontWeight:600 }}>
                         <b>{p.grade}年</b> {p.name}
                       </td>
-                      {events.map(ev=>{
-                        const s = attMap[ev.id]?.[p.id] ?? "未回答";
-                        return (
-                          <td key={ev.id+"-"+p.id} style={{ padding:"6px 8px", textAlign:"center", borderBottom:"1px solid #f7f7f7", ...statusStyle(s) }}>
-                            {statusShort(s)}
-                          </td>
-                        );
-                      })}
+{events.map(ev => {
+  const s = attMap[ev.id]?.[p.id] ?? "未回答";
+
+  return (
+    <td
+      key={ev.id + "-" + p.id}
+      style={{
+        padding: "4px 6px",
+        textAlign: "center",
+        borderBottom: "1px solid #f7f7f7",
+        ...statusStyle(s),
+      }}
+    >
+<select
+  value={s}
+  onChange={(e) => updateStatus(ev.id, p, e.target.value)}
+  style={{
+    fontSize: 12,
+    padding: "2px 4px",
+    borderRadius: 6,
+    border: "none",
+    background: "transparent",
+  }}
+>
+  {ATTEND_STATUSES.map((st) => (
+    <option key={st} value={st}>
+      {st === "未回答" ? "−" : st}
+    </option>
+  ))}
+</select>
+
+    </td>
+  );
+})}
+
                       <td style={{ padding:"6px 10px", textAlign:"right", borderLeft:"1px solid #f0f0f0" }}>{sum.present}</td>
                       <td style={{ padding:"6px 10px", textAlign:"right" }}>{sum.late}</td>
                       <td style={{ padding:"6px 10px", textAlign:"right" }}>{sum.early}</td>
@@ -1969,8 +2091,8 @@ function AttendanceMatrixPage({ players, onBack, defaultYM, allEvents }) {
       </div>
 
       <div style={{ marginTop:8, fontSize:12, color:"#666" }}>
-        表示対象：{y}年{m}月／「練習・試合関係」カテゴリーのみ。セル略記：出=出席／調=調整中／欠=欠席／遅=遅刻／早=早退／—=未回答
-      </div>
+        表示対象：{y}年{m}月／「練習・試合関係」カテゴリーのみ。セル略記：出=出席／調=調整中／欠=欠席／遅=遅刻／早=早退／—=未回答 ■ 集計方法：未回答は集計に入らない。遅刻、早退は出席として計算。
+     <button style={styles.btnOutline} onClick={onBack}>トップページにもどる</button> </div>
       {loading && <div style={{ marginTop:8, color:"#999" }}>読み込み中…</div>}
     </div>
   );
