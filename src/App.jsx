@@ -1358,14 +1358,17 @@ const attendanceSummary = useMemo(() => {
                         <b>{p.grade}年</b> {p.name}
                       </div>
                       <select
-                        style={{ ...styles.select, ...colorStyle }}
-                        value={cur}
-                        onChange={(e) => updateLocalAttendance(p, e.target.value)}
-                      >
-                        {ATTEND_STATUSES.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+  style={{ ...styles.select, ...colorStyle }}
+  value={cur}
+  onChange={(e) => updateLocalAttendance(p, e.target.value)}
+>
+  {ATTEND_STATUSES.map((s) => (
+    <option key={s} value={s}>
+      {s === "未回答" ? "−" : s}
+    </option>
+  ))}
+</select>
+
                     </div>
                   );
                 })}
@@ -1385,15 +1388,18 @@ const attendanceSummary = useMemo(() => {
                       <div style={{ fontSize: 16, marginRight: 8 }}>
                         <b>{p.grade}年</b> {p.name}
                       </div>
-                      <select
-                        style={{ ...styles.select, ...colorStyle }}
-                        value={cur}
-                        onChange={(e) => updateLocalAttendance(p, e.target.value)}
-                      >
-                        {ATTEND_STATUSES.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+<select
+  style={{ ...styles.select, ...colorStyle }}
+  value={cur}
+  onChange={(e) => updateLocalAttendance(p, e.target.value)}
+>
+  {ATTEND_STATUSES.map((s) => (
+    <option key={s} value={s}>
+      {s === "未回答" ? "−" : s}
+    </option>
+  ))}
+</select>
+
                     </div>
                   );
                 })}
