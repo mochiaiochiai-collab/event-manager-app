@@ -1540,15 +1540,43 @@ const attendanceSummary = useMemo(() => {
 }
 // ---------------- UniformPage Page ----------------
 function UniformPage({ players, onBack }) {
-  // 並び順：ユニフォーム番号の昇順（空欄は最後）
-  const byUniformAsc = (a, b) => {
-    const ua = parseInt(a.uniformNo || 0);
-    const ub = parseInt(b.uniformNo || 0);
-    if (!a.uniformNo && !b.uniformNo) return 0;
-    if (!a.uniformNo) return 1;
-    if (!b.uniformNo) return -1;
-    return ua - ub;
+// 並び順：
+// 1) ユニフォーム番号あり → 番号の小さい順
+// 2) ユニフォーム番号なし & ビブス番号あり → ビブス番号の小さい順
+// 3) 両方なし → 学年（6年→1年）→ 名前
+const byUniformAsc = (a, b) => {
+  const group = (p) => {
+    if (p.uniformNo && p.uniformNo !== "") return 0; // ユニフォームあり
+    if (p.bibNo && p.bibNo !== "") return 1;        // ユニフォームなし・ビブスあり
+    return 2;                                       // 両方なし
   };
+
+  const gA = group(a);
+  const gB = group(b);
+
+  // まずグループ（0→1→2）の順で並べる
+  if (gA !== gB) return gA - gB;
+
+  // グループごとの並び
+  if (gA === 0) {
+    // ユニフォーム番号あり → ユニフォーム番号の昇順
+    const ua = parseInt(a.uniformNo, 10) || 0;
+    const ub = parseInt(b.uniformNo, 10) || 0;
+    if (ua !== ub) return ua - ub;
+  } else if (gA === 1) {
+    // ユニフォーム番号なし & ビブス番号あり → ビブス番号の昇順
+    const ba = parseInt(a.bibNo, 10) || 0;
+    const bb = parseInt(b.bibNo, 10) || 0;
+    if (ba !== bb) return ba - bb;
+  }
+
+  // ここまで来たら同じグループで番号も同じ → 学年（6→1）→ 名前で並べる
+  const ga = parseInt(a.grade, 10) || 0;
+  const gb = parseInt(b.grade, 10) || 0;
+  if (ga !== gb) return gb - ga; // 6年→1年
+  return (a.name || "").localeCompare(b.name || "");
+};
+
 
   const [numMap, setNumMap] = useState({});
 
@@ -1704,9 +1732,16 @@ function UniformPage({ players, onBack }) {
   return (
     <div>
       <h1 style={styles.h1}>🎽 ユニフォーム番号管理</h1>
-      <div style={{ fontSize: 14, marginBottom: 8 }}>
-        並び順：<b>ユニフォーム番号の小さい順</b>（男女別／空欄は最後）
-      </div>
+     <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
+  並び順：
+  <b>
+    ①ユニフォーム番号の小さい順 →
+    ②ユニフォーム番号なしでビブス番号の小さい順 →
+    ③両方なしは学年順
+  </b>
+  （男女別）
+</div>
+
 
       {renderList(boys, "男子")}
       {renderList(girls, "女子")}
